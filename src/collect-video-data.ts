@@ -1,13 +1,19 @@
 import { VideoDataCollector } from './video-data-collector.js';
 import type { VideoCollectionConfig } from './video-data-collector.js';
 import { join } from 'path';
-import { spawn, exec } from 'child_process';
-import { promisify } from 'util';
+import { readdirSync } from 'fs';
+import { createRequire } from 'module';
 
-const execAsync = promisify(exec);
+// Use createRequire for the evdev CommonJS module
+const require = createRequire(import.meta.url);
+const Evdev = require('evdev');
 
-// Hotkey configuration
-const HOTKEY_COMBO = ['shift', 'ctrl', 'l'] as const; // SHIFT+CTRL+L
+// Hotkey configuration - using evdev key name strings
+const KEY_LEFTSHIFT = 'KEY_LEFTSHIFT';
+const KEY_RIGHTSHIFT = 'KEY_RIGHTSHIFT';
+const KEY_LEFTCTRL = 'KEY_LEFTCTRL';
+const KEY_RIGHTCTRL = 'KEY_RIGHTCTRL';
+const KEY_L = 'KEY_L';
 
 async function main(): Promise<void> {
   // Parse command line arguments
@@ -59,7 +65,7 @@ async function main(): Promise<void> {
     console.log('│  Press SHIFT+CTRL+L to start/stop     │');
     console.log('└────────────────────────────────────────┘\n');
 
-    // Set up hotkey listener
+    // Set up hotkey listener using evdev
     await waitForHotkeyToggle(collector, config);
   } catch (error) {
     console.error('\n❌ Error during data collection:', error);
@@ -79,33 +85,29 @@ async function main(): Promise<void> {
 }
 
 /**
- * Find keyboard device IDs for xinput
+ * Find keyboard device paths in /dev/input/by-id/
  */
-async function findKeyboardDevices(): Promise<string[]> {
-  const { stdout } = await execAsync('xinput list --short');
+function findKeyboardDevices(): string[] {
+  const inputDir = '/dev/input/by-id';
   const devices: string[] = [];
-  const lines = stdout.split('\n');
 
-  for (const line of lines) {
-    // Look for keyboard devices, excluding virtual ones
-    if (
-      line.includes('keyboard') &&
-      !line.includes('Virtual') &&
-      !line.includes('XTEST') &&
-      line.includes('id=')
-    ) {
-      const idMatch = line.match(/id=(\d+)/);
-      if (idMatch && idMatch[1]) {
-        devices.push(idMatch[1]);
+  try {
+    const files = readdirSync(inputDir);
+    for (const file of files) {
+      // Look for keyboard event devices
+      if (file.includes('-kbd') || file.includes('-event-kbd')) {
+        devices.push(join(inputDir, file));
       }
     }
+  } catch (error) {
+    console.error('Failed to read /dev/input/by-id:', error);
   }
 
   return devices;
 }
 
 /**
- * Wait for hotkey combo and toggle recording
+ * Wait for hotkey combo and toggle recording using evdev
  */
 async function waitForHotkeyToggle(
   collector: VideoDataCollector,
@@ -115,112 +117,111 @@ async function waitForHotkeyToggle(
     const keyState = new Set<string>();
     let isRecording = false;
     let isProcessingHotkey = false; // Debounce flag
-    const processes: ReturnType<typeof spawn>[] = [];
+    const evdevInstances: InstanceType<typeof Evdev>[] = [];
 
-    // Find keyboard devices and listen to each
-    findKeyboardDevices()
-      .then((deviceIds) => {
-        if (deviceIds.length === 0) {
-          reject(new Error('No keyboard devices found'));
-          return;
-        }
+    // Find keyboard devices
+    const devicePaths = findKeyboardDevices();
 
-        console.log(`Listening to ${deviceIds.length} keyboard device(s) for hotkey...`);
+    if (devicePaths.length === 0) {
+      reject(new Error('No keyboard devices found in /dev/input/by-id/'));
+      return;
+    }
 
-        for (const deviceId of deviceIds) {
-          const xinputProcess = spawn('xinput', ['test', deviceId]);
-          processes.push(xinputProcess);
+    console.log(`Found ${devicePaths.length} keyboard device(s):`);
+    devicePaths.forEach((d) => console.log(`  - ${d}`));
+    console.log('');
 
-          xinputProcess.stdout?.on('data', (data: Buffer) => {
-            const output = data.toString();
-            const lines = output.split('\n');
+    // Create evdev instance for each keyboard
+    for (const devicePath of devicePaths) {
+      try {
+        const evdev = new Evdev();
 
-            for (const line of lines) {
-              // Parse xinput test output format:
-              // "key press   50" or "key release 50"
-              if (line.includes('key press')) {
-                const keyMatch = line.match(/key press\s+(\d+)/);
-                if (keyMatch && keyMatch[1]) {
-                  const keycode = parseInt(keyMatch[1]);
-                  const keyName = keycodeToName(keycode);
-                  if (keyName) {
-                    keyState.add(keyName);
-                    // Check hotkey combo
-                    void handleHotkeyCheck();
-                  }
-                }
-              } else if (line.includes('key release')) {
-                const keyMatch = line.match(/key release\s+(\d+)/);
-                if (keyMatch && keyMatch[1]) {
-                  const keycode = parseInt(keyMatch[1]);
-                  const keyName = keycodeToName(keycode);
-                  if (keyName) {
-                    keyState.delete(keyName);
-                  }
-                }
-              }
-            }
-          });
+        evdev.on('EV_KEY', (data: { code: string; value: number }) => {
+          const { code, value } = data;
 
-          xinputProcess.stderr?.on('data', (data: Buffer) => {
-            const output = data.toString();
-            if (output.includes('error') || output.includes('Error')) {
-              console.error(`xinput error (device ${deviceId}):`, output);
-            }
-          });
-
-          xinputProcess.on('error', (error) => {
-            console.error(`Failed to start xinput for device ${deviceId}:`, error.message);
-          });
-        }
-
-        async function handleHotkeyCheck(): Promise<void> {
-          // Check if all hotkey combo keys are pressed
-          const allPressed = HOTKEY_COMBO.every((key) => keyState.has(key));
-
-          if (!allPressed || isProcessingHotkey) {
-            return;
+          // value: 0 = release, 1 = press, 2 = repeat
+          if (value === 1) {
+            // Key press
+            keyState.add(code);
+            void checkHotkey();
+          } else if (value === 0) {
+            // Key release
+            keyState.delete(code);
           }
+          // Ignore value === 2 (key repeat)
+        });
 
-          // Set debounce flag
-          isProcessingHotkey = true;
+        evdev.on('error', (err: Error) => {
+          console.error(`evdev error on ${devicePath}:`, err.message);
+        });
 
-          try {
-            if (isRecording) {
-              // Stop recording
-              console.log('\n🛑 Hotkey detected - Stopping recording...');
-              await collector.stopCollection();
-              isRecording = false;
-              console.log('\n┌────────────────────────────────────────┐');
-              console.log('│  Press SHIFT+CTRL+L to start again    │');
-              console.log('│  Press Ctrl+C to exit                 │');
-              console.log('└────────────────────────────────────────┘\n');
-            } else {
-              // Start recording
-              console.log('\n🎬 Hotkey detected - Starting recording...');
-              console.log(`Max duration: ${config.maxDurationSeconds} seconds`);
-              console.log('Press SHIFT+CTRL+L again to stop, or wait for auto-stop\n');
+        // Open the device
+        evdev.open(devicePath);
+        evdevInstances.push(evdev);
+        console.log(`Listening on: ${devicePath}`);
+      } catch (error) {
+        console.error(`Failed to open ${devicePath}:`, error);
+      }
+    }
 
-              await collector.startCollection();
-              isRecording = true;
-            }
-          } catch (error) {
-            console.error('Error toggling recording:', error);
-          } finally {
-            // Clear debounce after a delay
-            setTimeout(() => {
-              isProcessingHotkey = false;
-            }, 500);
-          }
+    if (evdevInstances.length === 0) {
+      reject(
+        new Error('Failed to open any keyboard devices. You may need to be in the "input" group.'),
+      );
+      return;
+    }
+
+    console.log('\nWaiting for hotkey (SHIFT+CTRL+L)...\n');
+
+    async function checkHotkey(): Promise<void> {
+      // Check if SHIFT + CTRL + L are all pressed
+      const shiftPressed = keyState.has(KEY_LEFTSHIFT) || keyState.has(KEY_RIGHTSHIFT);
+      const ctrlPressed = keyState.has(KEY_LEFTCTRL) || keyState.has(KEY_RIGHTCTRL);
+      const lPressed = keyState.has(KEY_L);
+
+      if (!shiftPressed || !ctrlPressed || !lPressed || isProcessingHotkey) {
+        return;
+      }
+
+      // Set debounce flag
+      isProcessingHotkey = true;
+
+      try {
+        if (isRecording) {
+          // Stop recording
+          console.log('\n🛑 Hotkey detected - Stopping recording...');
+          await collector.stopCollection();
+          isRecording = false;
+          console.log('\n┌────────────────────────────────────────┐');
+          console.log('│  Press SHIFT+CTRL+L to start again    │');
+          console.log('│  Press Ctrl+C to exit                 │');
+          console.log('└────────────────────────────────────────┘\n');
+        } else {
+          // Start recording
+          console.log('\n🎬 Hotkey detected - Starting recording...');
+          console.log(`Max duration: ${config.maxDurationSeconds} seconds`);
+          console.log('Press SHIFT+CTRL+L again to stop, or wait for auto-stop\n');
+
+          await collector.startCollection();
+          isRecording = true;
         }
-      })
-      .catch(reject);
+      } catch (error) {
+        console.error('Error toggling recording:', error);
+      } finally {
+        // Clear debounce after a delay
+        setTimeout(() => {
+          isProcessingHotkey = false;
+        }, 500);
+      }
+    }
 
     // Cleanup function
     function cleanup(): void {
-      for (const proc of processes) {
-        if (!proc.killed) {
-          proc.kill('SIGTERM');
+      for (const evdev of evdevInstances) {
+        try {
+          evdev.close();
+        } catch {
+          // Ignore close errors
         }
       }
     }
@@ -246,24 +247,6 @@ async function waitForHotkeyToggle(
     // Handle process exit
     process.on('exit', cleanup);
   });
-}
-
-/**
- * Convert X11 keycode to key name
- */
-function keycodeToName(keycode: number): string | null {
-  const keyMap: { [key: number]: string } = {
-    50: 'shift', // Left Shift
-    62: 'shift', // Right Shift
-    37: 'ctrl', // Left Ctrl
-    105: 'ctrl', // Right Ctrl
-    64: 'alt', // Left Alt
-    108: 'alt', // Right Alt
-    46: 'l', // L key
-    // Add more keys as needed
-  };
-
-  return keyMap[keycode] || null;
 }
 
 // Run the main function
