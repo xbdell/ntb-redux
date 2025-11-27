@@ -2,7 +2,7 @@
   "name": "ntb-redux",
   "version": "1.0.0",
   "description": "LM powered bot to play the video game nuclear throne",
-  "main": "dist/index.js",
+  "main": "dist/main/main/index.js",
   "type": "module",
   "engines": {
     "node": "22.13.1"
@@ -24,7 +24,15 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
-    "warn-clean-all": "rm -rf dist cleaned_data models node_modules training_data package-lock.json"
+    "warn-clean-all": "rm -rf dist cleaned_data models node_modules training_data package-lock.json",
+    "electron:dev": "concurrently -k \"npm run electron:vite\" \"npm run electron:main\"",
+    "electron:vite": "vite",
+    "electron:main": "sleep 3 && NODE_ENV=development electron .",
+    "electron:build": "npm run electron:build:main && npm run electron:build:renderer",
+    "electron:build:main": "tsc -p tsconfig.main.json",
+    "electron:build:renderer": "vite build",
+    "electron:preview": "npm run electron:build && electron .",
+    "electron:package": "npm run electron:build && electron-builder --config electron-builder.json"
   },
   "repository": {
     "type": "git",
@@ -38,19 +46,32 @@
   },
   "homepage": "https://github.com/github-bdem/ntb-redux#readme",
   "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
     "@eslint/js": "^9.31.0",
     "@types/node": "^24.0.14",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.36.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "concurrently": "^9.2.1",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.30.1",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-prettier": "^5.5.1",
     "prettier": "^3.6.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.6",
+    "recharts": "^3.5.0",
     "tsx": "^4.20.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^7.2.4"
   },
   "dependencies": {
     "@tensorflow/tfjs-node-gpu": "^4.22.0",
+    "electron": "^39.2.4",
+    "electron-store": "^11.0.2",
     "evdev": "^0.3.0"
   }
 }

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.ntb-redux.app",
+  "productName": "Nuclear Throne Bot",
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "dist/main/main/index.js"
+  },
+  "linux": {
+    "target": [
+      "AppImage",
+      "deb"
+    ],
+    "category": "Game",
+    "maintainer": "ntb-redux",
+    "icon": "build/icon.png"
+  },
+  "deb": {
+    "depends": [
+      "ffmpeg",
+      "xdotool",
+      "wmctrl",
+      "scrot"
+    ]
+  },
+  "appImage": {
+    "artifactName": "${productName}-${version}.${ext}"
+  }
+}

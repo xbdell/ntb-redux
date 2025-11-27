@@ -4,7 +4,7 @@ LM powered bot to play the video game nuclear throne. Currently in a very alpha 
 
 ## History
 
-This is a second attempt at a project I started around 7 years ago.  I had the basic idea for this project and even got around to creating the data collection portion [os-input-capture](https://github.com/github-bdem/os-input-capture) before life derailed my progess.  Fast forward to now, and with all the advances in the LM landscape and tooling, I figured it would be a good time to try out the project again.  This time I decided to also try out my new Anthropic subscription and see just how useful claude-code is when writing a project from the ground up.
+This is a second attempt at a project I started around 7 years ago. I had the basic idea for this project and even got around to creating the data collection portion [os-input-capture](https://github.com/github-bdem/os-input-capture) before life derailed my progess. Fast forward to now, and with all the advances in the LM landscape and tooling, I figured it would be a good time to try out the project again. This time I decided to also try out my new Anthropic subscription and see just how useful claude-code is when writing a project from the ground up.
 
 ## OS Dependencies
 
@@ -13,6 +13,8 @@ Currently only tested on Ubuntu 24 LTS. The following command will make sure all
 - `sudo apt install ffmpeg scrot wmctrl xdotool xinput xev`
 
 **Note:** FFmpeg is required for video-based data collection.
+
+**Note:** User running program must be in the input group
 
 ## From beginning to end:
 
@@ -27,6 +29,7 @@ Ensure that Nuclear Throne is running fullscreen on your leftmost monitor.
 `npm run collect-video`
 
 This will:
+
 - Wait for you to press **SHIFT+CTRL+L** to start recording
 - Record video (30fps by default) and all keyboard/mouse input
 - Press **SHIFT+CTRL+L** again to stop recording
@@ -36,10 +39,12 @@ This will:
   - `metadata.json` - Session information
 
 **Options:**
+
 - `npm run collect-video:60fps` - Record at 60fps (larger files)
 - `--duration=300` - Set max recording duration in seconds (default: 300)
 
 **Advantages:**
+
 - More storage efficient (compressed video vs thousands of PNGs)
 - Higher temporal fidelity (continuous frames)
 - Easier to review and verify training data quality
