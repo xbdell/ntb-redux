@@ -14,6 +14,8 @@ export class XInputCapture {
   private keyboardDevices: string[] = [];
   private pointerDevices: string[] = [];
   private windowGeometry: WindowGeometry | null = null;
+  private screenWidth = 0;
+  private screenHeight = 0;
   private lastMouseX = 0;
   private lastMouseY = 0;
 
@@ -22,6 +24,12 @@ export class XInputCapture {
     console.log(
       `Window geometry set: ${geometry.width}x${geometry.height} at (${geometry.x}, ${geometry.y})`,
     );
+  }
+
+  public setScreenDimensions(width: number, height: number): void {
+    this.screenWidth = width;
+    this.screenHeight = height;
+    console.log(`Screen dimensions set: ${width}x${height}`);
   }
 
   public async startCapturing(): Promise<void> {
@@ -269,6 +277,16 @@ export class XInputCapture {
     absoluteX: number,
     absoluteY: number,
   ): { x: number; y: number } {
+    // For fullscreen on leftmost monitor, use screen dimensions if set
+    if (this.screenWidth > 0 && this.screenHeight > 0) {
+      // Fullscreen mode: coordinates are already screen-relative (start at 0,0)
+      // Just constrain to screen bounds
+      const x = Math.max(0, Math.min(absoluteX, this.screenWidth));
+      const y = Math.max(0, Math.min(absoluteY, this.screenHeight));
+      return { x, y };
+    }
+
+    // Fallback to window geometry mode (for backwards compatibility)
     if (!this.windowGeometry) {
       // If no window geometry is set, return absolute coordinates
       return { x: absoluteX, y: absoluteY };

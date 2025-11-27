@@ -10,11 +10,42 @@ This is a second attempt at a project I started around 7 years ago.  I had the b
 
 Currently only tested on Ubuntu 24 LTS. The following command will make sure all os level packages are installed.
 
-- `sudo apt install scrot wmctrl xdotool xinput xev`
+- `sudo apt install ffmpeg scrot wmctrl xdotool xinput xev`
+
+**Note:** FFmpeg is required for video-based data collection.
 
 ## From beginning to end:
 
 ### Collect Data
+
+There are two methods for collecting training data:
+
+#### Method 1: Video-based Collection (Recommended)
+
+Ensure that Nuclear Throne is running fullscreen on your leftmost monitor.
+
+`npm run collect-video`
+
+This will:
+- Wait for you to press **SHIFT+CTRL+L** to start recording
+- Record video (30fps by default) and all keyboard/mouse input
+- Press **SHIFT+CTRL+L** again to stop recording
+- Save to `training_data/session_TIMESTAMP/` containing:
+  - `video.mp4` - Screen recording of gameplay
+  - `events.jsonl` - All keyboard/mouse events with timestamps
+  - `metadata.json` - Session information
+
+**Options:**
+- `npm run collect-video:60fps` - Record at 60fps (larger files)
+- `--duration=300` - Set max recording duration in seconds (default: 300)
+
+**Advantages:**
+- More storage efficient (compressed video vs thousands of PNGs)
+- Higher temporal fidelity (continuous frames)
+- Easier to review and verify training data quality
+- Better for 144Hz displays (records at 30/60fps, not full 144fps)
+
+#### Method 2: Screenshot-based Collection (Legacy)
 
 Ensure that nuclearthrone window is running and visible (preferably on the first level so we can skip menus tainting the dataset).
 
