@@ -106,6 +106,14 @@ const electronAPI = {
     ipcRenderer.on('inference:stats', listener);
     return () => ipcRenderer.removeListener('inference:stats', listener);
   },
+
+  // Global hotkey events
+  onCollectionHotkeyToggled: (callback: (isRecording: boolean) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, isRecording: boolean) =>
+      callback(isRecording);
+    ipcRenderer.on('collection:hotkey-toggled', listener);
+    return () => ipcRenderer.removeListener('collection:hotkey-toggled', listener);
+  },
 };
 
 // Expose the API to the renderer process

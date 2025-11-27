@@ -88,6 +88,7 @@ The Electron app uses secure IPC with context isolation:
 - Preload script bridges to `ipcRenderer.invoke()`
 - Main process handlers in `ipc-handlers.ts` wrap CLI tools
 - Real-time events sent via `webContents.send()`
+- Global hotkey (Ctrl+Shift+L) registered via Electron's `globalShortcut` API
 
 ## OS Dependencies (Linux only)
 

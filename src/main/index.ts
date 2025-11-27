@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { registerIpcHandlers, setMainWindow } from './ipc-handlers.js';
+import { registerIpcHandlers, setMainWindow, toggleCollection } from './ipc-handlers.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -53,7 +53,24 @@ async function createWindow(): Promise<void> {
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  await createWindow();
+
+  // Register global shortcut for recording toggle (Ctrl+Shift+L)
+  const shortcut = 'CommandOrControl+Shift+L';
+  const registered = globalShortcut.register(shortcut, () => {
+    console.log(`🎹 Global shortcut ${shortcut} pressed`);
+    toggleCollection().catch((error) => {
+      console.error('Failed to toggle collection:', error);
+    });
+  });
+
+  if (registered) {
+    console.log(`✅ Global shortcut registered: ${shortcut}`);
+  } else {
+    console.error(`❌ Failed to register global shortcut: ${shortcut}`);
+  }
+});
 
 // Quit when all windows are closed, except on macOS.
 app.on('window-all-closed', () => {
@@ -67,6 +84,11 @@ app.on('activate', () => {
   if (mainWindow === null) {
     void createWindow();
   }
+});
+
+// Unregister all shortcuts when quitting
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 // Handle any uncaught exceptions

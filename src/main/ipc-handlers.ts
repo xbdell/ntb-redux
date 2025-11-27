@@ -375,6 +375,51 @@ let trainingService: TrainingService | null = null;
 let inferenceService: InferenceService | null = null;
 
 // ============================================================================
+// Exported functions for global hotkey support
+// ============================================================================
+
+/**
+ * Get the collection service instance (for status checks)
+ */
+export function getCollectionService(): CollectionService | null {
+  return collectionService;
+}
+
+/**
+ * Toggle collection on/off via global hotkey
+ * Returns the new recording state
+ */
+export async function toggleCollection(): Promise<boolean> {
+  if (!collectionService) {
+    collectionService = new CollectionService();
+  }
+
+  const status = collectionService.getStatus();
+
+  if (status.isRecording) {
+    // Stop recording
+    console.log('🛑 Global hotkey: Stopping recording...');
+    await collectionService.stop();
+    sendToRenderer('collection:hotkey-toggled', false);
+    return false;
+  } else {
+    // Start recording with current config
+    console.log('🎬 Global hotkey: Starting recording...');
+    const resolvedPaths = getResolvedPaths(appConfig);
+    await collectionService.start({
+      outputDir: resolvedPaths.trainingData,
+      gameProcessName: appConfig.collection.gameProcessName,
+      recordingFramerate: appConfig.collection.defaultFps,
+      videoCodec: 'libx264',
+      compressionQuality: 18,
+      targetMonitor: appConfig.collection.defaultMonitor,
+    });
+    sendToRenderer('collection:hotkey-toggled', true);
+    return true;
+  }
+}
+
+// ============================================================================
 // Helper functions
 // ============================================================================
 

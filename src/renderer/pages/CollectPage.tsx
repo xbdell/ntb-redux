@@ -12,6 +12,7 @@ declare global {
       getCollectionStatus: () => Promise<CollectionStatus>;
       onCollectionEventCount: (callback: (count: number) => void) => () => void;
       onCollectionStopped: (callback: (session: SessionInfo) => void) => () => void;
+      onCollectionHotkeyToggled: (callback: (isRecording: boolean) => void) => () => void;
     };
   }
 }
@@ -58,9 +59,19 @@ function CollectPage() {
       setSessions((prev) => [session, ...prev]);
     });
 
+    // Subscribe to global hotkey toggle events
+    const unsubscribeHotkey = window.electronAPI.onCollectionHotkeyToggled((recording) => {
+      setIsRecording(recording);
+      if (recording) {
+        setEventCount(0);
+        setDuration(0);
+      }
+    });
+
     return () => {
       unsubscribeEventCount();
       unsubscribeStopped();
+      unsubscribeHotkey();
     };
   }, []);
 
@@ -236,7 +247,7 @@ function CollectPage() {
               </button>
 
               <p className="text-xs text-base-content/60 text-center">
-                Press <kbd>SHIFT+CTRL+L</kbd> to stop recording
+                Press <kbd>Ctrl+Shift+L</kbd> to start/stop recording (global hotkey)
               </p>
             </div>
           )}

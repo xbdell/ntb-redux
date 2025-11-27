@@ -104,6 +104,14 @@ npm run electron:preview
 npm run electron:package
 ```
 
+### Global Hotkey
+
+The Electron GUI supports a global hotkey for recording:
+
+- **Ctrl+Shift+L** - Toggle recording on/off (works even when the app is in the background)
+
+This allows you to start/stop recording without switching to the GUI window, which is useful when playing the game in fullscreen.
+
 ## Project Structure
 
 ```
