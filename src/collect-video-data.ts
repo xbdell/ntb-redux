@@ -18,10 +18,8 @@ const KEY_L = 'KEY_L';
 async function main(): Promise<void> {
   // Parse command line arguments
   const args = process.argv.slice(2);
-  const durationArg = args.find((arg) => arg.startsWith('--duration='));
   const fpsArg = args.find((arg) => arg.startsWith('--fps='));
 
-  const maxDuration = durationArg ? parseInt(durationArg.split('=')[1] as string) : 300; // Default 300 seconds (5 min)
   const fps = fpsArg ? parseInt(fpsArg.split('=')[1] as string) : 30; // Default 30 fps
 
   if (fps !== 30 && fps !== 60) {
@@ -36,7 +34,6 @@ async function main(): Promise<void> {
     recordingFramerate: fps as 30 | 60,
     videoCodec: 'libx264',
     compressionQuality: 18, // CRF 18 = high quality
-    maxDurationSeconds: maxDuration,
     targetMonitor: 'leftmost', // Game on leftmost monitor
   };
 
@@ -46,7 +43,6 @@ async function main(): Promise<void> {
 
   console.log('Configuration:');
   console.log(`  Game: ${config.gameProcessName}`);
-  console.log(`  Max duration: ${config.maxDurationSeconds} seconds`);
   console.log(`  Frame rate: ${config.recordingFramerate} fps`);
   console.log(`  Output: ${config.outputDir}`);
   console.log(`  Monitor: ${config.targetMonitor}`);
@@ -66,7 +62,7 @@ async function main(): Promise<void> {
     console.log('└────────────────────────────────────────┘\n');
 
     // Set up hotkey listener using evdev
-    await waitForHotkeyToggle(collector, config);
+    await waitForHotkeyToggle(collector);
   } catch (error) {
     console.error('\n❌ Error during data collection:', error);
 
@@ -109,10 +105,7 @@ function findKeyboardDevices(): string[] {
 /**
  * Wait for hotkey combo and toggle recording using evdev
  */
-async function waitForHotkeyToggle(
-  collector: VideoDataCollector,
-  config: VideoCollectionConfig,
-): Promise<void> {
+async function waitForHotkeyToggle(collector: VideoDataCollector): Promise<void> {
   return new Promise((_resolve, reject) => {
     const keyState = new Set<string>();
     let isRecording = false;
@@ -199,8 +192,7 @@ async function waitForHotkeyToggle(
         } else {
           // Start recording
           console.log('\n🎬 Hotkey detected - Starting recording...');
-          console.log(`Max duration: ${config.maxDurationSeconds} seconds`);
-          console.log('Press SHIFT+CTRL+L again to stop, or wait for auto-stop\n');
+          console.log('Press SHIFT+CTRL+L again to stop\n');
 
           await collector.startCollection();
           isRecording = true;

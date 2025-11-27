@@ -6,7 +6,6 @@ export interface VideoCollectionConfig {
   recordingFramerate: 30 | 60;
   videoCodec: 'libx264' | 'libx265';
   compressionQuality: number;
-  maxDurationSeconds: number;
   targetMonitor: 'leftmost' | 'primary';
 }
 

@@ -41,7 +41,6 @@ This will:
 **Options:**
 
 - `npm run collect-video:60fps` - Record at 60fps (larger files)
-- `--duration=300` - Set max recording duration in seconds (default: 300)
 
 **Advantages:**
 

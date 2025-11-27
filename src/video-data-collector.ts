@@ -11,7 +11,6 @@ export interface VideoCollectionConfig {
   recordingFramerate: 30 | 60;
   videoCodec: 'libx264' | 'libx265';
   compressionQuality: number; // CRF: 18-28, lower is better
-  maxDurationSeconds: number;
   targetMonitor: 'leftmost' | 'primary';
 }
 
@@ -118,7 +117,6 @@ export class VideoDataCollector {
     console.log('\n========================================');
     console.log('Starting data collection...');
     console.log(`Session: ${this.sessionId}`);
-    console.log(`Duration: ${this.config.maxDurationSeconds} seconds`);
     console.log(`Frame rate: ${this.config.recordingFramerate} fps`);
     console.log('========================================\n');
 
@@ -143,17 +141,7 @@ export class VideoDataCollector {
     });
 
     console.log('\n✅ Collection started successfully!');
-    console.log(
-      `Recording will stop automatically after ${this.config.maxDurationSeconds} seconds`,
-    );
-    console.log('Or press Ctrl+C to stop manually\n');
-
-    // Auto-stop after max duration
-    setTimeout(() => {
-      if (this.isCollecting) {
-        void this.stopCollection();
-      }
-    }, this.config.maxDurationSeconds * 1000);
+    console.log('Press SHIFT+CTRL+L to stop recording\n');
   }
 
   /**

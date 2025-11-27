@@ -27,7 +27,6 @@ function CollectPage() {
 
   // Configuration state
   const [fps, setFps] = useState<30 | 60>(30);
-  const [maxDuration, setMaxDuration] = useState(300);
   const [selectedMonitor, setSelectedMonitor] = useState<string>('leftmost');
 
   useEffect(() => {
@@ -85,7 +84,6 @@ function CollectPage() {
         recordingFramerate: fps,
         videoCodec: 'libx264',
         compressionQuality: 18,
-        maxDurationSeconds: maxDuration,
         targetMonitor: selectedMonitor,
       });
       setIsRecording(true);
@@ -185,33 +183,22 @@ function CollectPage() {
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Max Duration (seconds)</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={maxDuration}
-                  onChange={(e) => setMaxDuration(parseInt(e.target.value))}
-                  min={10}
-                  max={3600}
-                />
+                <label className="form-label">Target Monitor</label>
+                <select
+                  className="form-select"
+                  value={selectedMonitor}
+                  onChange={(e) => setSelectedMonitor(e.target.value)}
+                >
+                  <option value="leftmost">Leftmost Monitor</option>
+                  <option value="primary">Primary Monitor</option>
+                </select>
               </div>
             </div>
-            <div className="form-group mb-4">
-              <label className="form-label">Target Monitor</label>
-              <select
-                className="form-select"
-                value={selectedMonitor}
-                onChange={(e) => setSelectedMonitor(e.target.value)}
-              >
-                <option value="leftmost">Leftmost Monitor</option>
-                <option value="primary">Primary Monitor</option>
-              </select>
-              {monitors.length > 0 && (
-                <p className="text-xs text-muted mt-2">
-                  Detected: {monitors.map((m) => `${m.name} (${m.width}x${m.height})`).join(', ')}
-                </p>
-              )}
-            </div>
+            {monitors.length > 0 && (
+              <p className="text-xs text-muted mb-4">
+                Detected: {monitors.map((m) => `${m.name} (${m.width}x${m.height})`).join(', ')}
+              </p>
+            )}
             <button
               className="btn btn-primary btn-lg"
               onClick={handleStartRecording}
@@ -220,7 +207,7 @@ function CollectPage() {
               Start Recording
             </button>
             <p className="text-xs text-muted mt-2">
-              Or press <kbd>SHIFT+CTRL+L</kbd> to toggle recording from anywhere
+              Press <kbd>SHIFT+CTRL+L</kbd> to stop recording
             </p>
           </div>
         )}
