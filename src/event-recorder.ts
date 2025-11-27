@@ -2,8 +2,12 @@ import { createWriteStream, readdirSync } from 'fs';
 import type { WriteStream } from 'fs';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import type { InputEvent } from './input-capture.js';
 import { createRequire } from 'module';
+
+const execAsync = promisify(exec);
 
 // Use createRequire for the evdev CommonJS module
 const require = createRequire(import.meta.url);
@@ -14,6 +18,7 @@ export interface EventRecorderConfig {
   screenWidth: number;
   screenHeight: number;
   bufferSize?: number; // Number of events to buffer before flushing
+  mouseMoveThrottle?: number; // Record 1 out of every N mouse move events (default: 1 = no throttle)
 }
 
 export interface RecordedEvent extends InputEvent {
@@ -113,9 +118,13 @@ export class EventRecorder {
   private eventCount = 0;
   private writeQueue: RecordedEvent[] = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
+  private mousePositionInterval: ReturnType<typeof setInterval> | null = null;
   private evdevInstances: InstanceType<typeof Evdev>[] = [];
   private lastMouseX = 0;
   private lastMouseY = 0;
+  private mouseMoveCounter = 0;
+  private lastRecordedMouseX = -1;
+  private lastRecordedMouseY = -1;
 
   constructor(config: EventRecorderConfig) {
     this.config = config;
@@ -150,6 +159,30 @@ export class EventRecorder {
   }
 
   /**
+   * Get current mouse position from X11 using xdotool
+   */
+  private async getMousePosition(): Promise<{ x: number; y: number }> {
+    try {
+      const { stdout } = await execAsync('xdotool getmouselocation --shell');
+      const lines = stdout.split('\n');
+      let x = 0;
+      let y = 0;
+
+      for (const line of lines) {
+        if (line.startsWith('X=')) {
+          x = parseInt(line.substring(2));
+        } else if (line.startsWith('Y=')) {
+          y = parseInt(line.substring(2));
+        }
+      }
+
+      return { x, y };
+    } catch {
+      return { x: this.lastMouseX, y: this.lastMouseY };
+    }
+  }
+
+  /**
    * Start recording events to JSONL file
    */
   public async startRecording(): Promise<void> {
@@ -158,10 +191,7 @@ export class EventRecorder {
     }
 
     // Ensure output directory exists
-    const outputDir = this.config.outputPath.substring(
-      0,
-      this.config.outputPath.lastIndexOf('/'),
-    );
+    const outputDir = this.config.outputPath.substring(0, this.config.outputPath.lastIndexOf('/'));
     await fs.mkdir(outputDir, { recursive: true });
 
     // Create write stream for JSONL output
@@ -180,7 +210,7 @@ export class EventRecorder {
       this.setupKeyboardDevice(devicePath);
     }
 
-    // Set up evdev listeners for mice
+    // Set up evdev listeners for mice (for button clicks)
     for (const devicePath of mice) {
       this.setupMouseDevice(devicePath);
     }
@@ -189,14 +219,80 @@ export class EventRecorder {
       throw new Error('Failed to open any input devices. You may need to be in the "input" group.');
     }
 
+    // Get initial mouse position
+    const initialPos = await this.getMousePosition();
+    this.lastMouseX = initialPos.x;
+    this.lastMouseY = initialPos.y;
+
     this.isRecording = true;
     this.eventCount = 0;
+    this.mouseMoveCounter = 0;
 
     console.log(`Event recording started: ${this.config.outputPath}`);
     console.log(`Screen dimensions: ${this.config.screenWidth}x${this.config.screenHeight}`);
+    console.log(`Mouse move throttle: 1 out of every ${this.config.mouseMoveThrottle || 1} events`);
 
     // Start periodic flush
     this.startPeriodicFlush();
+
+    // Start mouse position polling (for accurate coordinates)
+    this.startMousePositionPolling();
+  }
+
+  /**
+   * Start polling mouse position at regular intervals
+   */
+  private startMousePositionPolling(): void {
+    const throttle = this.config.mouseMoveThrottle || 1;
+
+    // Poll mouse position every 16ms (~60Hz) for smooth tracking
+    this.mousePositionInterval = setInterval(() => {
+      if (!this.isRecording) return;
+
+      void this.pollMousePosition(throttle);
+    }, 16); // ~60Hz polling rate
+  }
+
+  /**
+   * Poll mouse position and record if changed
+   */
+  private async pollMousePosition(throttle: number): Promise<void> {
+    try {
+      const pos = await this.getMousePosition();
+
+      // Constrain to screen bounds
+      const x = this.constrainX(pos.x);
+      const y = this.constrainY(pos.y);
+
+      // Only record if position has changed
+      if (x !== this.lastRecordedMouseX || y !== this.lastRecordedMouseY) {
+        this.mouseMoveCounter++;
+
+        // Apply throttling
+        if (this.mouseMoveCounter >= throttle) {
+          this.mouseMoveCounter = 0;
+
+          const event: RecordedEvent = {
+            timestamp: Date.now(),
+            type: 'mouse',
+            action: 'move',
+            x,
+            y,
+          };
+
+          this.writeQueue.push(event);
+          this.eventCount++;
+
+          this.lastRecordedMouseX = x;
+          this.lastRecordedMouseY = y;
+        }
+      }
+
+      this.lastMouseX = x;
+      this.lastMouseY = y;
+    } catch {
+      // Ignore errors in polling
+    }
   }
 
   /**
@@ -243,7 +339,7 @@ export class EventRecorder {
   }
 
   /**
-   * Set up evdev listener for a mouse device
+   * Set up evdev listener for a mouse device (buttons only, position from xdotool)
    */
   private setupMouseDevice(devicePath: string): void {
     try {
@@ -274,60 +370,13 @@ export class EventRecorder {
         }
       });
 
-      // Handle mouse movement
-      evdev.on('EV_REL', (data: { code: string; value: number }) => {
-        if (!this.isRecording) return;
-
-        const { code, value } = data;
-
-        if (code === 'REL_X') {
-          this.lastMouseX += value;
-        } else if (code === 'REL_Y') {
-          this.lastMouseY += value;
-        }
-
-        // Record move event (throttled by the flush interval)
-        const event: RecordedEvent = {
-          timestamp: Date.now(),
-          type: 'mouse',
-          action: 'move',
-          x: this.constrainX(this.lastMouseX),
-          y: this.constrainY(this.lastMouseY),
-        };
-
-        // Only keep latest move event to avoid flooding
-        const lastEvent = this.writeQueue[this.writeQueue.length - 1];
-        if (lastEvent?.type === 'mouse' && lastEvent.action === 'move') {
-          // Update the last move event instead of adding new one
-          lastEvent.x = event.x;
-          lastEvent.y = event.y;
-          lastEvent.timestamp = event.timestamp;
-        } else {
-          this.writeQueue.push(event);
-          this.eventCount++;
-        }
-      });
-
-      // Handle absolute mouse position (for some devices)
-      evdev.on('EV_ABS', (data: { code: string; value: number }) => {
-        if (!this.isRecording) return;
-
-        const { code, value } = data;
-
-        if (code === 'ABS_X') {
-          this.lastMouseX = value;
-        } else if (code === 'ABS_Y') {
-          this.lastMouseY = value;
-        }
-      });
-
       evdev.on('error', (err: Error) => {
         console.error(`evdev mouse error on ${devicePath}:`, err.message);
       });
 
       evdev.open(devicePath);
       this.evdevInstances.push(evdev);
-      console.log(`Listening to mouse: ${devicePath}`);
+      console.log(`Listening to mouse buttons: ${devicePath}`);
     } catch (error) {
       console.error(`Failed to open mouse ${devicePath}:`, error);
     }
@@ -388,6 +437,12 @@ export class EventRecorder {
     if (this.flushInterval) {
       clearInterval(this.flushInterval);
       this.flushInterval = null;
+    }
+
+    // Stop mouse position polling
+    if (this.mousePositionInterval) {
+      clearInterval(this.mousePositionInterval);
+      this.mousePositionInterval = null;
     }
 
     // Flush remaining events

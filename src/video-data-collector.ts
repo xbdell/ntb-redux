@@ -90,6 +90,7 @@ export class VideoDataCollector {
       screenWidth: this.monitor.width,
       screenHeight: this.monitor.height,
       bufferSize: 100,
+      mouseMoveThrottle: 12, // Record 1 out of every 3 mouse move events (~20Hz effective)
     });
 
     console.log('Initialization complete');
@@ -142,7 +143,9 @@ export class VideoDataCollector {
     });
 
     console.log('\n✅ Collection started successfully!');
-    console.log(`Recording will stop automatically after ${this.config.maxDurationSeconds} seconds`);
+    console.log(
+      `Recording will stop automatically after ${this.config.maxDurationSeconds} seconds`,
+    );
     console.log('Or press Ctrl+C to stop manually\n');
 
     // Auto-stop after max duration
@@ -197,10 +200,7 @@ export class VideoDataCollector {
   /**
    * Generate session metadata
    */
-  private async generateMetadata(
-    duration: number,
-    eventCount: number,
-  ): Promise<SessionMetadata> {
+  private async generateMetadata(duration: number, eventCount: number): Promise<SessionMetadata> {
     if (!this.monitor) {
       throw new Error('Monitor info not available');
     }
