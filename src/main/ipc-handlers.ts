@@ -1,4 +1,5 @@
 import type { IpcMain, BrowserWindow } from 'electron';
+import { dialog } from 'electron';
 import type {
   VideoCollectionConfig,
   CleaningConfig,
@@ -11,7 +12,9 @@ import type {
   InferenceStatus,
   MonitorInfo,
   SessionInfo,
+  AppConfig,
 } from '../shared/types.js';
+import { loadConfig, saveConfig, getResolvedPaths } from '../shared/config.js';
 import { VideoDataCollector } from '../cli/video-data-collector.js';
 import { TrainingDataCleaner } from '../cli/clean-training-data.js';
 import { TensorFlowTrainer } from '../cli/tfjs-training-setup.js';
@@ -20,6 +23,9 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+
+// App config (loaded at startup)
+let appConfig: AppConfig = loadConfig();
 
 const execAsync = promisify(exec);
 
@@ -424,7 +430,8 @@ async function getMonitors(): Promise<MonitorInfo[]> {
 }
 
 async function getSessions(): Promise<SessionInfo[]> {
-  const trainingDataDir = join(process.cwd(), 'training_data');
+  const resolvedPaths = getResolvedPaths(appConfig);
+  const trainingDataDir = resolvedPaths.trainingData;
   const sessions: SessionInfo[] = [];
 
   try {
@@ -489,6 +496,30 @@ async function checkDependencies(): Promise<{ [key: string]: boolean }> {
 // ============================================================================
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
+  // Config handlers
+  ipcMain.handle('config:get', async () => {
+    return appConfig;
+  });
+
+  ipcMain.handle('config:set', async (_event, config: AppConfig) => {
+    appConfig = config;
+    saveConfig(config);
+  });
+
+  ipcMain.handle('config:select-directory', async (_event, title: string) => {
+    if (!mainWindow) {
+      return null;
+    }
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
   // System handlers
   ipcMain.handle('system:get-monitors', async () => {
     return getMonitors();

@@ -1,0 +1,22 @@
+{
+  "paths": {
+    "trainingData": "/media/namesd/s1/NTB-DATA",
+    "cleanedData": "./cleaned_data",
+    "models": "./models"
+  },
+  "collection": {
+    "defaultFps": 30,
+    "defaultMonitor": "leftmost",
+    "gameProcessName": "nuclearthrone"
+  },
+  "training": {
+    "defaultModelType": "custom_cnn",
+    "defaultEpochs": 10,
+    "defaultBatchSize": 32,
+    "defaultLearningRate": 0.001
+  },
+  "inference": {
+    "defaultFps": 30,
+    "defaultSmoothingFactor": 0.3
+  }
+}

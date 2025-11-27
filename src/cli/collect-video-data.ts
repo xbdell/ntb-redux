@@ -1,8 +1,9 @@
 import { VideoDataCollector } from './video-data-collector.js';
 import type { VideoCollectionConfig } from './video-data-collector.js';
-import { join } from 'path';
 import { readdirSync } from 'fs';
+import { join } from 'path';
 import { createRequire } from 'module';
+import { loadConfig, getResolvedPaths } from '../shared/config.js';
 
 // Use createRequire for the evdev CommonJS module
 const require = createRequire(import.meta.url);
@@ -16,11 +17,15 @@ const KEY_RIGHTCTRL = 'KEY_RIGHTCTRL';
 const KEY_L = 'KEY_L';
 
 async function main(): Promise<void> {
+  // Load app configuration
+  const appConfig = loadConfig();
+  const resolvedPaths = getResolvedPaths(appConfig);
+
   // Parse command line arguments
   const args = process.argv.slice(2);
   const fpsArg = args.find((arg) => arg.startsWith('--fps='));
 
-  const fps = fpsArg ? parseInt(fpsArg.split('=')[1] as string) : 30; // Default 30 fps
+  const fps = fpsArg ? parseInt(fpsArg.split('=')[1] as string) : appConfig.collection.defaultFps;
 
   if (fps !== 30 && fps !== 60) {
     console.error('Error: FPS must be either 30 or 60');
@@ -29,12 +34,12 @@ async function main(): Promise<void> {
 
   // Configuration for video data collection
   const config: VideoCollectionConfig = {
-    outputDir: join(process.cwd(), 'training_data'),
-    gameProcessName: 'nuclearthrone',
+    outputDir: resolvedPaths.trainingData,
+    gameProcessName: appConfig.collection.gameProcessName,
     recordingFramerate: fps as 30 | 60,
     videoCodec: 'libx264',
     compressionQuality: 18, // CRF 18 = high quality
-    targetMonitor: 'leftmost', // Game on leftmost monitor
+    targetMonitor: appConfig.collection.defaultMonitor,
   };
 
   console.log('\n╔════════════════════════════════════════╗');

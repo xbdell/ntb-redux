@@ -3,6 +3,7 @@
 import { promises as fs } from 'fs';
 import { join, basename } from 'path';
 import { fileURLToPath } from 'url';
+import { loadConfig, getResolvedPaths } from '../shared/config.js';
 
 interface CleaningConfig {
   inputDir: string;
@@ -345,22 +346,27 @@ class TrainingDataCleaner {
 
 // CLI interface
 async function main(): Promise<void> {
+  // Load app configuration
+  const appConfig = loadConfig();
+  const resolvedPaths = getResolvedPaths(appConfig);
+
   const args = process.argv.slice(2);
 
-  if (args.length < 2) {
-    console.log('Usage: ts-node clean-training-data.ts <input-dir> <output-dir> [options]');
-    console.log('');
-    console.log('Options:');
-    console.log('  --val-split <num>    Validation split ratio (default: 0.2)');
-    console.log('  --test-split <num>   Test split ratio (default: 0.1)');
-    console.log('  --min-events <num>   Minimum input events per frame (default: 1)');
-    console.log('  --max-jump <num>     Maximum mouse jump in pixels (default: 200)');
-    process.exit(1);
+  // Use config paths as defaults, allow override via CLI args
+  let inputDir = resolvedPaths.trainingData;
+  let outputDir = resolvedPaths.cleanedData;
+
+  // If positional args are provided, use them
+  if (args.length >= 1 && !args[0]?.startsWith('--')) {
+    inputDir = args[0] ?? inputDir;
+  }
+  if (args.length >= 2 && !args[1]?.startsWith('--')) {
+    outputDir = args[1] ?? outputDir;
   }
 
   const config: CleaningConfig = {
-    inputDir: args[0] ?? '',
-    outputDir: args[1] ?? '',
+    inputDir,
+    outputDir,
     validationSplit: 0.2,
     testSplit: 0.1,
     minInputEvents: 1,
@@ -368,7 +374,7 @@ async function main(): Promise<void> {
   };
 
   // Parse options
-  for (let i = 2; i < args.length; i++) {
+  for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--val-split':
         config.validationSplit = parseFloat(args[++i] ?? '0.2');
@@ -382,6 +388,18 @@ async function main(): Promise<void> {
       case '--max-jump':
         config.maxMouseJump = parseInt(args[++i] ?? '200');
         break;
+      case '--help':
+        console.log('Usage: ts-node clean-training-data.ts [input-dir] [output-dir] [options]');
+        console.log('');
+        console.log('Paths default to values from ntb-config.json if not specified.');
+        console.log('');
+        console.log('Options:');
+        console.log('  --val-split <num>    Validation split ratio (default: 0.2)');
+        console.log('  --test-split <num>   Test split ratio (default: 0.1)');
+        console.log('  --min-events <num>   Minimum input events per frame (default: 1)');
+        console.log('  --max-jump <num>     Maximum mouse jump in pixels (default: 200)');
+        console.log('  --help               Show this help message');
+        process.exit(0);
     }
   }
 

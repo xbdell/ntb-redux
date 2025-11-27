@@ -65,7 +65,8 @@ src/
 │   └── pages/               # Page components
 │
 └── shared/                  # Shared types
-    └── types.ts             # IPC types, configs, status types
+    ├── types.ts             # IPC types, configs, status types
+    └── config.ts            # Configuration file manager (ntb-config.json)
 ```
 
 ### Key Technologies
@@ -106,6 +107,18 @@ sudo usermod -aG input $USER
 2. **Clean** - Preprocess and split data to `cleaned_data/`
 3. **Train** - Train TensorFlow.js model, save to `models/`
 4. **Play** - Load model and control game in real-time
+
+## Configuration
+
+The application uses `ntb-config.json` for user settings. Both CLI tools and the GUI read/write this file.
+
+Key config sections:
+- `paths` - trainingData, cleanedData, models directories
+- `collection` - defaultFps, defaultMonitor, gameProcessName
+- `training` - defaultModelType, defaultEpochs, defaultBatchSize, defaultLearningRate
+- `inference` - defaultFps, defaultSmoothingFactor
+
+CLI tools use config values as defaults but allow command-line overrides.
 
 ## Project Preferences
 

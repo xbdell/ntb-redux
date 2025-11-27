@@ -1,5 +1,52 @@
 // IPC Channel types for type-safe communication between main and renderer
 
+// Application configuration (persisted to config file)
+export interface AppConfig {
+  paths: {
+    trainingData: string;
+    cleanedData: string;
+    models: string;
+  };
+  collection: {
+    defaultFps: 30 | 60;
+    defaultMonitor: 'leftmost' | 'primary';
+    gameProcessName: string;
+  };
+  training: {
+    defaultModelType: 'custom_cnn' | 'mobilenet' | 'efficientnet';
+    defaultEpochs: number;
+    defaultBatchSize: number;
+    defaultLearningRate: number;
+  };
+  inference: {
+    defaultFps: number;
+    defaultSmoothingFactor: number;
+  };
+}
+
+export const DEFAULT_CONFIG: AppConfig = {
+  paths: {
+    trainingData: './training_data',
+    cleanedData: './cleaned_data',
+    models: './models',
+  },
+  collection: {
+    defaultFps: 30,
+    defaultMonitor: 'leftmost',
+    gameProcessName: 'nuclearthrone',
+  },
+  training: {
+    defaultModelType: 'custom_cnn',
+    defaultEpochs: 10,
+    defaultBatchSize: 32,
+    defaultLearningRate: 0.001,
+  },
+  inference: {
+    defaultFps: 30,
+    defaultSmoothingFactor: 0.3,
+  },
+};
+
 export interface VideoCollectionConfig {
   outputDir: string;
   gameProcessName: string;
@@ -120,6 +167,11 @@ export interface SessionInfo {
 
 // IPC Channel definitions
 export type IpcChannels = {
+  // Config
+  'config:get': () => Promise<AppConfig>;
+  'config:set': (config: AppConfig) => Promise<void>;
+  'config:select-directory': (title: string) => Promise<string | null>;
+
   // System
   'system:get-monitors': () => Promise<MonitorInfo[]>;
   'system:get-sessions': () => Promise<SessionInfo[]>;

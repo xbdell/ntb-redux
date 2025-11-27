@@ -7,6 +7,8 @@ import { SafeGameController } from './game-controller.js';
 import { ScreenshotCapture } from './screenshot-capture.js';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
+import { join } from 'path';
+import { loadConfig, getResolvedPaths } from '../shared/config.js';
 
 interface AIConfig {
   modelPath: string;
@@ -280,39 +282,28 @@ class NuclearThroneAI {
 
 // CLI interface
 async function main(): Promise<void> {
+  // Load app configuration
+  const appConfig = loadConfig();
+  const resolvedPaths = getResolvedPaths(appConfig);
+
   const args = process.argv.slice(2);
 
-  if (args.length < 1) {
-    console.log('Nuclear Throne AI - Autonomous Game Playing');
-    console.log('');
-    console.log('Usage: ts-node nuclear-throne-ai.ts <model-path> [options]');
-    console.log('');
-    console.log('Options:');
-    console.log('  --window <title>        Game window title (default: nuclearthrone)');
-    console.log('  --fps <number>          Target FPS (default: 20)');
-    console.log('  --no-controller         Disable controller (prediction only)');
-    console.log('  --no-safety             Disable safety mode');
-    console.log('  --smoothing <number>    Action smoothing 0-1 (default: 0.3)');
-    console.log('  --confidence <number>   Confidence threshold 0-1 (default: 0.4)');
-    console.log('  --dead-zone <number>    Movement dead zone 0-1 (default: 0.1)');
-    console.log('  --mouse-speed <number>  Mouse speed multiplier (default: 0.8)');
-    console.log('  --debug                 Enable debug mode');
-    console.log('  --save-session          Save session data');
-    console.log('');
-    console.log('Examples:');
-    console.log('  ts-node nuclear-throne-ai.ts ./models/model --fps 30 --debug');
-    console.log('  ts-node nuclear-throne-ai.ts ./models/model --no-controller --debug');
-    process.exit(1);
+  // Use config paths as defaults
+  let modelPath = join(resolvedPaths.models, 'model');
+
+  // If positional arg provided, use it
+  if (args.length >= 1 && !args[0]?.startsWith('--')) {
+    modelPath = args[0] ?? modelPath;
   }
 
   const config: AIConfig = {
-    modelPath: args[0] ?? '',
-    gameWindowTitle: 'nuclearthrone',
-    targetFPS: 20,
+    modelPath,
+    gameWindowTitle: appConfig.collection.gameProcessName,
+    targetFPS: appConfig.inference.defaultFps,
     enableController: true,
     safetyMode: true,
     performance: {
-      smoothingFactor: 0.3,
+      smoothingFactor: appConfig.inference.defaultSmoothingFactor,
       confidenceThreshold: 0.4,
       deadZone: 0.1,
       mouseSpeed: 0.8,
@@ -325,7 +316,7 @@ async function main(): Promise<void> {
   };
 
   // Parse options
-  for (let i = 1; i < args.length; i++) {
+  for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--window':
         config.gameWindowTitle = args[++i] ?? 'nuclearthrone';
@@ -358,6 +349,30 @@ async function main(): Promise<void> {
       case '--save-session':
         config.debug.saveSession = true;
         break;
+      case '--help':
+        console.log('Nuclear Throne AI - Autonomous Game Playing');
+        console.log('');
+        console.log('Usage: ts-node nuclear-throne-ai.ts [model-path] [options]');
+        console.log('');
+        console.log('Model path defaults to models/model from ntb-config.json.');
+        console.log('');
+        console.log('Options:');
+        console.log('  --window <title>        Game window title (default: nuclearthrone)');
+        console.log('  --fps <number>          Target FPS (default: 20)');
+        console.log('  --no-controller         Disable controller (prediction only)');
+        console.log('  --no-safety             Disable safety mode');
+        console.log('  --smoothing <number>    Action smoothing 0-1 (default: 0.3)');
+        console.log('  --confidence <number>   Confidence threshold 0-1 (default: 0.4)');
+        console.log('  --dead-zone <number>    Movement dead zone 0-1 (default: 0.1)');
+        console.log('  --mouse-speed <number>  Mouse speed multiplier (default: 0.8)');
+        console.log('  --debug                 Enable debug mode');
+        console.log('  --save-session          Save session data');
+        console.log('  --help                  Show this help message');
+        console.log('');
+        console.log('Examples:');
+        console.log('  ts-node nuclear-throne-ai.ts --fps 30 --debug');
+        console.log('  ts-node nuclear-throne-ai.ts --no-controller --debug');
+        process.exit(0);
     }
   }
 

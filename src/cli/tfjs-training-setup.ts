@@ -5,6 +5,7 @@ import * as tf from '@tensorflow/tfjs-node-gpu'; // For GPU support
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import * as path from 'path';
+import { loadConfig, getResolvedPaths } from '../shared/config.js';
 
 interface TrainingConfig {
   dataDir: string;
@@ -458,38 +459,32 @@ class TensorFlowTrainer {
 
 // CLI interface
 async function main(): Promise<void> {
+  // Load app configuration
+  const appConfig = loadConfig();
+  const resolvedPaths = getResolvedPaths(appConfig);
+
   const args = process.argv.slice(2);
 
-  if (args.length < 1) {
-    console.log('Usage: ts-node tfjs-training-setup.ts <data-dir> [options]');
-    console.log('');
-    console.log('Options:');
-    console.log(
-      '  --model <type>          Model type: custom_cnn, mobilenet, efficientnet (default: custom_cnn)',
-    );
-    console.log('  --epochs <num>          Number of epochs (default: 50)');
-    console.log('  --batch-size <num>      Batch size (default: 16)');
-    console.log('  --learning-rate <num>   Learning rate (default: 0.001)');
-    console.log('  --save-path <path>      Model save path (default: ./model)');
-    console.log('  --resume <path>         Resume from saved model');
-    console.log('');
-    console.log('Example:');
-    console.log('  ts-node tfjs-training-setup.ts ./cleaned_data --model mobilenet --epochs 30');
-    process.exit(1);
+  // Use config paths as defaults
+  let dataDir = resolvedPaths.cleanedData;
+
+  // If positional arg provided, use it
+  if (args.length >= 1 && !args[0]?.startsWith('--')) {
+    dataDir = args[0] ?? dataDir;
   }
 
   const config: TrainingConfig = {
-    dataDir: args[0] || '',
-    modelType: 'custom_cnn',
-    epochs: 50,
-    batchSize: 16,
-    learningRate: 0.001,
+    dataDir,
+    modelType: appConfig.training.defaultModelType,
+    epochs: appConfig.training.defaultEpochs,
+    batchSize: appConfig.training.defaultBatchSize,
+    learningRate: appConfig.training.defaultLearningRate,
     validationSplit: 0.2,
-    savePath: './models/model',
+    savePath: join(resolvedPaths.models, 'model'),
   };
 
   // Parse options
-  for (let i = 1; i < args.length; i++) {
+  for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--model':
         config.modelType = args[++i] as 'efficientnet' | 'mobilenet' | 'custom_cnn';
@@ -509,6 +504,25 @@ async function main(): Promise<void> {
       case '--resume':
         config.resumeFrom = args[++i];
         break;
+      case '--help':
+        console.log('Usage: ts-node tfjs-training-setup.ts [data-dir] [options]');
+        console.log('');
+        console.log('Data directory defaults to cleanedData path from ntb-config.json.');
+        console.log('');
+        console.log('Options:');
+        console.log(
+          '  --model <type>          Model type: custom_cnn, mobilenet, efficientnet (default: custom_cnn)',
+        );
+        console.log('  --epochs <num>          Number of epochs (default: 50)');
+        console.log('  --batch-size <num>      Batch size (default: 16)');
+        console.log('  --learning-rate <num>   Learning rate (default: 0.001)');
+        console.log('  --save-path <path>      Model save path (default: ./models/model)');
+        console.log('  --resume <path>         Resume from saved model');
+        console.log('  --help                  Show this help message');
+        console.log('');
+        console.log('Example:');
+        console.log('  ts-node tfjs-training-setup.ts --model mobilenet --epochs 30');
+        process.exit(0);
     }
   }
 

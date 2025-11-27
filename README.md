@@ -140,7 +140,8 @@ ntb-redux/
 │   │       └── SettingsPage.tsx # Settings UI
 │   │
 │   └── shared/                  # Shared types between main/renderer
-│       └── types.ts             # IPC channel types, configs, status types
+│       ├── types.ts             # IPC channel types, configs, status types
+│       └── config.ts            # Configuration file manager
 │
 ├── dist/                        # Compiled output
 │   ├── main/                    # Compiled main process (includes cli/)
@@ -149,6 +150,7 @@ ntb-redux/
 ├── training_data/               # Raw collected sessions
 ├── cleaned_data/                # Preprocessed training data
 ├── models/                      # Trained model weights
+├── ntb-config.json              # User configuration (paths, defaults)
 │
 ├── tsconfig.json                # Base TypeScript config
 ├── tsconfig.main.json           # Main process TypeScript config
@@ -229,3 +231,56 @@ The Electron app uses a secure IPC (Inter-Process Communication) architecture wi
 | `inference:stop` | Request | Stop AI agent |
 | `inference:get-status` | Request | Get inference status |
 | `inference:stats` | Event | Real-time FPS and latency stats |
+| `config:get` | Request | Get application configuration |
+| `config:set` | Request | Save application configuration |
+| `config:select-directory` | Request | Open directory picker dialog |
+
+## Configuration
+
+The application uses a configuration file (`ntb-config.json`) to store user preferences and paths. This file is created automatically when you first save settings in the GUI or can be created manually.
+
+### Configuration File Structure
+
+```json
+{
+  "paths": {
+    "trainingData": "./training_data",
+    "cleanedData": "./cleaned_data",
+    "models": "./models"
+  },
+  "collection": {
+    "defaultFps": 30,
+    "defaultMonitor": "leftmost",
+    "gameProcessName": "nuclearthrone"
+  },
+  "training": {
+    "defaultModelType": "custom_cnn",
+    "defaultEpochs": 10,
+    "defaultBatchSize": 32,
+    "defaultLearningRate": 0.001
+  },
+  "inference": {
+    "defaultFps": 30,
+    "defaultSmoothingFactor": 0.3
+  }
+}
+```
+
+### Configuration Options
+
+| Section | Option | Description | Default |
+|---------|--------|-------------|---------|
+| paths | trainingData | Directory for raw recorded sessions | `./training_data` |
+| paths | cleanedData | Directory for preprocessed data | `./cleaned_data` |
+| paths | models | Directory for trained models | `./models` |
+| collection | defaultFps | Default recording frame rate | `30` |
+| collection | defaultMonitor | Which monitor to record | `leftmost` |
+| collection | gameProcessName | Game window name | `nuclearthrone` |
+| training | defaultModelType | Default model architecture | `custom_cnn` |
+| training | defaultEpochs | Default training epochs | `10` |
+| training | defaultBatchSize | Default batch size | `32` |
+| training | defaultLearningRate | Default learning rate | `0.001` |
+| inference | defaultFps | Default inference FPS | `30` |
+| inference | defaultSmoothingFactor | Action smoothing (0-1) | `0.3` |
+
+Paths can be relative (resolved from current working directory) or absolute.

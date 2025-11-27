@@ -13,11 +13,18 @@ import type {
   PredictedAction,
   MonitorInfo,
   SessionInfo,
+  AppConfig,
 } from '../shared/types.js';
 
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
 const electronAPI = {
+  // Config
+  getConfig: (): Promise<AppConfig> => ipcRenderer.invoke('config:get'),
+  setConfig: (config: AppConfig): Promise<void> => ipcRenderer.invoke('config:set', config),
+  selectDirectory: (title: string): Promise<string | null> =>
+    ipcRenderer.invoke('config:select-directory', title),
+
   // System
   getMonitors: (): Promise<MonitorInfo[]> => ipcRenderer.invoke('system:get-monitors'),
   getSessions: (): Promise<SessionInfo[]> => ipcRenderer.invoke('system:get-sessions'),
