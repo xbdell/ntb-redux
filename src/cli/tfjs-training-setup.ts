@@ -32,8 +32,8 @@ interface DatasetSample {
 class TensorFlowTrainer {
   private config: TrainingConfig;
   private model: tf.LayersModel | null = null;
-  private trainDataset: tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> | null = null;
-  private valDataset: tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> | null = null;
+  private trainDataset: tf.data.Dataset<tf.TensorContainer> | null = null;
+  private valDataset: tf.data.Dataset<tf.TensorContainer> | null = null;
 
   constructor(config: TrainingConfig) {
     this.config = config;
@@ -105,7 +105,7 @@ class TensorFlowTrainer {
     samples: DatasetSample[],
     baseDir: string,
     isTraining: boolean,
-  ): tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> {
+  ): tf.data.Dataset<tf.TensorContainer> {
     // Create dataset from generator
     const dataset = tf.data.generator(async function* () {
       for (const sample of samples) {
@@ -350,7 +350,7 @@ class TensorFlowTrainer {
             await saveModel(epoch, valLoss);
           }
         }
-        public override onTrainEnd(): void {
+        public override async onTrainEnd(): Promise<void> {
           console.log('✅ Training completed!');
         }
       })(),

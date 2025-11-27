@@ -1,13 +1,21 @@
-import type { IpcMain } from 'electron';
+import type { IpcMain, BrowserWindow } from 'electron';
 import type {
   VideoCollectionConfig,
   CleaningConfig,
   TrainingConfig,
   InferenceConfig,
   CollectionStatus,
+  CleaningProgress,
+  CleaningResult,
+  TrainingStatus,
+  InferenceStatus,
   MonitorInfo,
   SessionInfo,
 } from '../shared/types.js';
+import { VideoDataCollector } from '../cli/video-data-collector.js';
+import { TrainingDataCleaner } from '../cli/clean-training-data.js';
+import { TensorFlowTrainer } from '../cli/tfjs-training-setup.js';
+import { NuclearThroneAI } from '../cli/nuclear-throne-ai.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { promises as fs } from 'fs';
@@ -15,60 +23,354 @@ import { join } from 'path';
 
 const execAsync = promisify(exec);
 
-// Service instances will be initialized lazily
-let collectionService: CollectionService | null = null;
+// Reference to the main window for sending events
+let mainWindow: BrowserWindow | null = null;
+
+export function setMainWindow(window: BrowserWindow | null): void {
+  mainWindow = window;
+}
+
+// Send event to renderer process
+function sendToRenderer(channel: string, ...args: unknown[]): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args);
+  }
+}
+
+// ============================================================================
+// Collection Service - wraps VideoDataCollector
+// ============================================================================
 
 class CollectionService {
-  private isRecording = false;
-  private sessionId: string | null = null;
-  private sessionDir: string | null = null;
-  private eventCount = 0;
-  private startTime = 0;
+  private collector: VideoDataCollector | null = null;
+  private eventCountInterval: ReturnType<typeof setInterval> | null = null;
+  private lastEventCount = 0;
 
   async start(config: VideoCollectionConfig): Promise<void> {
-    if (this.isRecording) {
+    if (this.collector) {
       throw new Error('Collection already in progress');
     }
-    // TODO: Initialize VideoDataCollector and start recording
-    this.isRecording = true;
-    this.sessionId = `session_${Date.now()}`;
-    this.sessionDir = join(config.outputDir, this.sessionId);
-    this.startTime = Date.now();
-    this.eventCount = 0;
+
+    // Convert shared config to VideoDataCollector config
+    this.collector = new VideoDataCollector({
+      outputDir: config.outputDir,
+      gameProcessName: config.gameProcessName,
+      recordingFramerate: config.recordingFramerate,
+      videoCodec: config.videoCodec,
+      compressionQuality: config.compressionQuality,
+      targetMonitor: config.targetMonitor,
+    });
+
+    await this.collector.initialize();
+    await this.collector.startCollection();
+
+    // Start polling for event count updates (every 500ms)
+    this.lastEventCount = 0;
+    this.eventCountInterval = setInterval(() => {
+      // The VideoDataCollector doesn't expose event count directly during recording
+      // We'll send periodic updates based on duration as a proxy
+      // In a full implementation, we'd need to modify VideoDataCollector to expose this
+      const status = this.collector?.getSessionInfo();
+      if (status?.isCollecting) {
+        // Estimate events based on ~60 events per second average
+        const estimatedEvents = Math.floor(
+          ((Date.now() - (this.collector as unknown as { startTime: number }).startTime) / 1000) *
+            60
+        );
+        if (estimatedEvents !== this.lastEventCount) {
+          this.lastEventCount = estimatedEvents;
+          sendToRenderer('collection:event-count', estimatedEvents);
+        }
+      }
+    }, 500);
   }
 
   async stop(): Promise<SessionInfo> {
-    if (!this.isRecording) {
+    if (!this.collector) {
       throw new Error('No collection in progress');
     }
-    // TODO: Stop VideoDataCollector and return session info
-    const duration = (Date.now() - this.startTime) / 1000;
+
+    // Clear the event count interval
+    if (this.eventCountInterval) {
+      clearInterval(this.eventCountInterval);
+      this.eventCountInterval = null;
+    }
+
+    const metadata = await this.collector.stopCollection();
+
     const session: SessionInfo = {
-      sessionId: this.sessionId!,
-      timestamp: this.startTime,
-      duration,
-      eventCount: this.eventCount,
-      videoSize: 0,
-      eventsSize: 0,
+      sessionId: metadata.sessionId,
+      timestamp: metadata.timestamp,
+      duration: metadata.duration,
+      eventCount: metadata.events.count,
+      videoSize: metadata.fileSize?.video || 0,
+      eventsSize: metadata.fileSize?.events || 0,
     };
 
-    this.isRecording = false;
-    this.sessionId = null;
-    this.sessionDir = null;
+    // Send stopped event to renderer
+    sendToRenderer('collection:stopped', session);
+
+    this.collector = null;
 
     return session;
   }
 
   getStatus(): CollectionStatus {
+    if (!this.collector) {
+      return {
+        isRecording: false,
+        sessionId: null,
+        sessionDir: null,
+        eventCount: 0,
+        duration: 0,
+      };
+    }
+
+    const info = this.collector.getSessionInfo();
+    const startTime = (this.collector as unknown as { startTime: number }).startTime || Date.now();
+
     return {
-      isRecording: this.isRecording,
-      sessionId: this.sessionId,
-      sessionDir: this.sessionDir,
-      eventCount: this.eventCount,
-      duration: this.isRecording ? (Date.now() - this.startTime) / 1000 : 0,
+      isRecording: info.isCollecting,
+      sessionId: info.sessionId,
+      sessionDir: info.sessionDir,
+      eventCount: this.lastEventCount,
+      duration: info.isCollecting ? (Date.now() - startTime) / 1000 : 0,
     };
   }
 }
+
+// ============================================================================
+// Cleaning Service - wraps TrainingDataCleaner
+// ============================================================================
+
+class CleaningService {
+  private cleaner: TrainingDataCleaner | null = null;
+  private progress: CleaningProgress | null = null;
+  private isRunning = false;
+
+  async start(config: CleaningConfig): Promise<CleaningResult> {
+    if (this.isRunning) {
+      throw new Error('Cleaning already in progress');
+    }
+
+    this.isRunning = true;
+    this.progress = {
+      phase: 'scanning',
+      currentSession: '',
+      processedSessions: 0,
+      totalSessions: 0,
+      framesKept: 0,
+      framesFiltered: 0,
+    };
+
+    // Convert IPC config to cleaner config
+    this.cleaner = new TrainingDataCleaner({
+      inputDir: config.inputDir,
+      outputDir: config.outputDir,
+      validationSplit: config.valSplit,
+      testSplit: config.testSplit,
+      minInputEvents: config.minEventsPerFrame,
+      maxMouseJump: config.maxMouseJump,
+    });
+
+    try {
+      // Run the cleaner
+      await this.cleaner.clean();
+
+      // Read the dataset info to get results
+      const datasetInfoPath = join(config.outputDir, 'dataset_info.json');
+      let trainCount = 0,
+        valCount = 0,
+        testCount = 0;
+
+      try {
+        const datasetInfo = JSON.parse(await fs.readFile(datasetInfoPath, 'utf8'));
+        trainCount = datasetInfo.splits?.train || 0;
+        valCount = datasetInfo.splits?.validation || 0;
+        testCount = datasetInfo.splits?.test || 0;
+      } catch {
+        // Dataset info may not exist if no valid frames
+      }
+
+      const result: CleaningResult = {
+        trainCount,
+        valCount,
+        testCount,
+        totalFrames: this.progress.framesKept + this.progress.framesFiltered,
+        filteredFrames: this.progress.framesFiltered,
+        outputDir: config.outputDir,
+      };
+
+      this.isRunning = false;
+      this.progress = null;
+      this.cleaner = null;
+
+      return result;
+    } catch (error) {
+      this.isRunning = false;
+      this.progress = null;
+      this.cleaner = null;
+      throw error;
+    }
+  }
+
+  getProgress(): CleaningProgress | null {
+    return this.progress;
+  }
+}
+
+// ============================================================================
+// Training Service - wraps TensorFlowTrainer
+// ============================================================================
+
+class TrainingService {
+  private trainer: TensorFlowTrainer | null = null;
+  private status: TrainingStatus = {
+    isTraining: false,
+    currentEpoch: 0,
+    totalEpochs: 0,
+    bestValLoss: Infinity,
+    modelPath: null,
+  };
+  private abortController: AbortController | null = null;
+
+  async start(config: TrainingConfig): Promise<void> {
+    if (this.status.isTraining) {
+      throw new Error('Training already in progress');
+    }
+
+    this.status = {
+      isTraining: true,
+      currentEpoch: 0,
+      totalEpochs: config.epochs,
+      bestValLoss: Infinity,
+      modelPath: null,
+    };
+
+    this.abortController = new AbortController();
+
+    // Convert IPC config to trainer config
+    this.trainer = new TensorFlowTrainer({
+      dataDir: config.dataDir,
+      modelType: config.modelType,
+      epochs: config.epochs,
+      batchSize: config.batchSize,
+      learningRate: config.learningRate,
+      validationSplit: 0.2, // Default
+      savePath: join(config.outputDir, 'model'),
+    });
+
+    try {
+      await this.trainer.initialize();
+      await this.trainer.train();
+
+      // Training completed
+      this.status.modelPath = join(config.outputDir, 'model');
+      sendToRenderer('training:complete', this.status.modelPath);
+    } catch (error) {
+      console.error('Training failed:', error);
+      throw error;
+    } finally {
+      this.status.isTraining = false;
+      this.trainer?.dispose();
+      this.trainer = null;
+      this.abortController = null;
+    }
+  }
+
+  async stop(): Promise<void> {
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+    this.status.isTraining = false;
+  }
+
+  getStatus(): TrainingStatus {
+    return { ...this.status };
+  }
+}
+
+// ============================================================================
+// Inference Service - wraps NuclearThroneAI
+// ============================================================================
+
+class InferenceService {
+  private ai: NuclearThroneAI | null = null;
+  private status: InferenceStatus = {
+    isRunning: false,
+    fps: 0,
+    inferenceTimeMs: 0,
+    gameWindowFound: false,
+  };
+
+  async start(config: InferenceConfig): Promise<void> {
+    if (this.status.isRunning) {
+      throw new Error('Inference already running');
+    }
+
+    this.ai = new NuclearThroneAI({
+      modelPath: config.modelPath,
+      gameWindowTitle: 'nuclearthrone',
+      targetFPS: config.targetFps,
+      enableController: config.useController,
+      safetyMode: true,
+      performance: {
+        smoothingFactor: config.smoothingFactor,
+        confidenceThreshold: 0.4,
+        deadZone: 0.1,
+        mouseSpeed: 0.8,
+      },
+      debug: {
+        enabled: config.debug,
+        logActions: config.debug,
+        saveSession: false,
+      },
+    });
+
+    try {
+      await this.ai.initialize();
+      this.status.isRunning = true;
+      this.status.gameWindowFound = true;
+
+      // Start the AI (this runs in a loop)
+      this.ai.start().catch((error) => {
+        console.error('AI loop error:', error);
+        this.status.isRunning = false;
+      });
+    } catch (error) {
+      this.ai = null;
+      this.status.isRunning = false;
+      throw error;
+    }
+  }
+
+  async stop(): Promise<void> {
+    if (this.ai) {
+      await this.ai.stop();
+      this.ai = null;
+    }
+    this.status.isRunning = false;
+    this.status.fps = 0;
+    this.status.inferenceTimeMs = 0;
+  }
+
+  getStatus(): InferenceStatus {
+    return { ...this.status };
+  }
+}
+
+// ============================================================================
+// Service instances (lazy initialization)
+// ============================================================================
+
+let collectionService: CollectionService | null = null;
+let cleaningService: CleaningService | null = null;
+let trainingService: TrainingService | null = null;
+let inferenceService: InferenceService | null = null;
+
+// ============================================================================
+// Helper functions
+// ============================================================================
 
 async function getMonitors(): Promise<MonitorInfo[]> {
   try {
@@ -79,11 +381,18 @@ async function getMonitors(): Promise<MonitorInfo[]> {
     for (const line of lines) {
       // Match lines like: "DP-0 connected primary 3840x1600+0+0 (normal..."
       // or: "HDMI-0 connected 1920x1080+3840+260 (normal..."
-      const match = line.match(
-        /^(\S+)\s+connected\s+(primary\s+)?(\d+)x(\d+)\+(\d+)\+(\d+)/
-      );
+      const match = line.match(/^(\S+)\s+connected\s+(primary\s+)?(\d+)x(\d+)\+(\d+)\+(\d+)/);
       if (match) {
-        const [, name, isPrimary, width, height, offsetX, offsetY] = match;
+        const name = match[1];
+        const isPrimary = match[2];
+        const width = match[3];
+        const height = match[4];
+        const offsetX = match[5];
+        const offsetY = match[6];
+
+        if (!name || !width || !height || !offsetX || !offsetY) {
+          continue;
+        }
 
         // Try to get refresh rate from the mode line
         let refreshRate = 60;
@@ -93,11 +402,11 @@ async function getMonitors(): Promise<MonitorInfo[]> {
         }
 
         monitors.push({
-          name: name!,
-          width: parseInt(width!),
-          height: parseInt(height!),
-          offsetX: parseInt(offsetX!),
-          offsetY: parseInt(offsetY!),
+          name,
+          width: parseInt(width),
+          height: parseInt(height),
+          offsetX: parseInt(offsetX),
+          offsetY: parseInt(offsetY),
           refreshRate,
           isPrimary: !!isPrimary,
         });
@@ -175,6 +484,10 @@ async function checkDependencies(): Promise<{ [key: string]: boolean }> {
   return results;
 }
 
+// ============================================================================
+// Register all IPC handlers
+// ============================================================================
+
 export function registerIpcHandlers(ipcMain: IpcMain): void {
   // System handlers
   ipcMain.handle('system:get-monitors', async () => {
@@ -217,57 +530,73 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return collectionService.getStatus();
   });
 
-  // Cleaning handlers (placeholder)
-  ipcMain.handle('cleaning:start', async (_event, _config: CleaningConfig) => {
-    // TODO: Implement cleaning service
-    return {
-      trainCount: 0,
-      valCount: 0,
-      testCount: 0,
-      totalFrames: 0,
-      filteredFrames: 0,
-      outputDir: '',
-    };
+  // Cleaning handlers
+  ipcMain.handle('cleaning:start', async (_event, config: CleaningConfig) => {
+    if (!cleaningService) {
+      cleaningService = new CleaningService();
+    }
+    return cleaningService.start(config);
   });
 
   ipcMain.handle('cleaning:get-progress', async () => {
-    return null;
+    if (!cleaningService) {
+      return null;
+    }
+    return cleaningService.getProgress();
   });
 
-  // Training handlers (placeholder)
-  ipcMain.handle('training:start', async (_event, _config: TrainingConfig) => {
-    // TODO: Implement training service
+  // Training handlers
+  ipcMain.handle('training:start', async (_event, config: TrainingConfig) => {
+    if (!trainingService) {
+      trainingService = new TrainingService();
+    }
+    return trainingService.start(config);
   });
 
   ipcMain.handle('training:stop', async () => {
-    // TODO: Implement training stop
+    if (!trainingService) {
+      return;
+    }
+    return trainingService.stop();
   });
 
   ipcMain.handle('training:get-status', async () => {
-    return {
-      isTraining: false,
-      currentEpoch: 0,
-      totalEpochs: 0,
-      bestValLoss: Infinity,
-      modelPath: null,
-    };
+    if (!trainingService) {
+      return {
+        isTraining: false,
+        currentEpoch: 0,
+        totalEpochs: 0,
+        bestValLoss: Infinity,
+        modelPath: null,
+      };
+    }
+    return trainingService.getStatus();
   });
 
-  // Inference handlers (placeholder)
-  ipcMain.handle('inference:start', async (_event, _config: InferenceConfig) => {
-    // TODO: Implement inference service
+  // Inference handlers
+  ipcMain.handle('inference:start', async (_event, config: InferenceConfig) => {
+    if (!inferenceService) {
+      inferenceService = new InferenceService();
+    }
+    return inferenceService.start(config);
   });
 
   ipcMain.handle('inference:stop', async () => {
-    // TODO: Implement inference stop
+    if (!inferenceService) {
+      return;
+    }
+    return inferenceService.stop();
   });
 
   ipcMain.handle('inference:get-status', async () => {
-    return {
-      isRunning: false,
-      fps: 0,
-      inferenceTimeMs: 0,
-      gameWindowFound: false,
-    };
+    if (!inferenceService) {
+      return {
+        isRunning: false,
+        fps: 0,
+        inferenceTimeMs: 0,
+        gameWindowFound: false,
+      };
+    }
+    return inferenceService.getStatus();
   });
 }

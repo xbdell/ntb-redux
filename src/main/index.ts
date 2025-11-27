@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { registerIpcHandlers } from './ipc-handlers.js';
+import { registerIpcHandlers, setMainWindow } from './ipc-handlers.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -32,8 +32,9 @@ async function createWindow(): Promise<void> {
     backgroundColor: '#1a1a2e',
   });
 
-  // Register IPC handlers
+  // Register IPC handlers and set main window reference
   registerIpcHandlers(ipcMain);
+  setMainWindow(mainWindow);
 
   if (isDev) {
     // In development, load from Vite dev server
@@ -45,6 +46,7 @@ async function createWindow(): Promise<void> {
   }
 
   mainWindow.on('closed', () => {
+    setMainWindow(null);
     mainWindow = null;
   });
 }

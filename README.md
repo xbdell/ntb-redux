@@ -82,3 +82,149 @@ We finally have a happy trained agent, time to allow it to play the game!
 `npm run agent-mode`
 
 will find the target window, by default `nuclearthrone`, starts grabbing screenshots of it, and then passes them into our trained tensorflow model (loaded from `models/model`).
+
+## Electron GUI
+
+In addition to the CLI tools, there is an Electron-based GUI that provides a unified interface for all operations.
+
+### Running the GUI
+
+**Development mode:**
+```bash
+npm run electron:dev
+```
+
+**Production preview:**
+```bash
+npm run electron:preview
+```
+
+**Package for distribution:**
+```bash
+npm run electron:package
+```
+
+## Project Structure
+
+```
+ntb-redux/
+├── src/
+│   ├── cli/                     # Standalone CLI tools
+│   │   ├── index.ts             # CLI entry point
+│   │   ├── video-data-collector.ts   # Video + input recording
+│   │   ├── collect-video-data.ts     # Video collection CLI
+│   │   ├── clean-training-data.ts    # Data preprocessing
+│   │   ├── tfjs-training-setup.ts    # TensorFlow.js training
+│   │   ├── nuclear-throne-ai.ts      # Game-playing agent
+│   │   ├── display-capture.ts        # FFmpeg screen recording
+│   │   ├── event-recorder.ts         # Keyboard/mouse event capture
+│   │   ├── screenshot-capture.ts     # Screenshot utilities
+│   │   ├── game-controller.ts        # Game input controller
+│   │   ├── realtime-inference.ts     # Real-time model inference
+│   │   └── ...
+│   │
+│   ├── main/                    # Electron main process
+│   │   ├── index.ts             # Main entry point, window creation
+│   │   ├── ipc-handlers.ts      # IPC handlers wrapping CLI tools
+│   │   └── preload.ts           # Preload script exposing APIs to renderer
+│   │
+│   ├── renderer/                # Electron renderer process (React)
+│   │   ├── index.tsx            # React entry point
+│   │   ├── App.tsx              # Main app with routing
+│   │   ├── index.css            # Global styles
+│   │   └── pages/               # React page components
+│   │       ├── CollectPage.tsx  # Data collection UI
+│   │       ├── CleanPage.tsx    # Data cleaning UI
+│   │       ├── TrainPage.tsx    # Model training UI
+│   │       ├── PlayPage.tsx     # Agent/inference UI
+│   │       └── SettingsPage.tsx # Settings UI
+│   │
+│   └── shared/                  # Shared types between main/renderer
+│       └── types.ts             # IPC channel types, configs, status types
+│
+├── dist/                        # Compiled output
+│   ├── main/                    # Compiled main process (includes cli/)
+│   └── renderer/                # Compiled renderer (Vite build)
+│
+├── training_data/               # Raw collected sessions
+├── cleaned_data/                # Preprocessed training data
+├── models/                      # Trained model weights
+│
+├── tsconfig.json                # Base TypeScript config
+├── tsconfig.main.json           # Main process TypeScript config
+├── vite.config.ts               # Vite config for renderer
+├── electron-builder.json        # Electron packaging config
+└── package.json
+```
+
+## IPC Architecture
+
+The Electron app uses a secure IPC (Inter-Process Communication) architecture with context isolation:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Renderer Process (React)                        │
+│                                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
+│  │ CollectPage  │  │  CleanPage   │  │  TrainPage   │  │   PlayPage   │ │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘ │
+│         │                 │                 │                 │          │
+│         └─────────────────┴────────┬────────┴─────────────────┘          │
+│                                    │                                     │
+│                          window.electronAPI                              │
+│                                    │                                     │
+└────────────────────────────────────┼─────────────────────────────────────┘
+                                     │ contextBridge
+┌────────────────────────────────────┼─────────────────────────────────────┐
+│                              Preload Script                              │
+│                                    │                                     │
+│              ipcRenderer.invoke() / ipcRenderer.on()                     │
+└────────────────────────────────────┼─────────────────────────────────────┘
+                                     │ IPC
+┌────────────────────────────────────┼─────────────────────────────────────┐
+│                           Main Process (Node.js)                         │
+│                                    │                                     │
+│                          ┌─────────┴─────────┐                           │
+│                          │   IPC Handlers    │                           │
+│                          └─────────┬─────────┘                           │
+│                                    │                                     │
+│    ┌───────────────┬───────────────┼───────────────┬───────────────┐     │
+│    ▼               ▼               ▼               ▼               │     │
+│ ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │     │
+│ │Collection│ │   Cleaning   │ │   Training   │ │  Inference   │    │     │
+│ │ Service  │ │   Service    │ │   Service    │ │   Service    │    │     │
+│ └────┬─────┘ └──────┬───────┘ └──────┬───────┘ └──────┬───────┘    │     │
+│      │              │                │                │            │     │
+│      ▼              ▼                ▼                ▼            │     │
+│ ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │     │
+│ │VideoData │ │TrainingData  │ │ TensorFlow   │ │NuclearThrone │    │     │
+│ │Collector │ │   Cleaner    │ │   Trainer    │ │     AI       │    │     │
+│ └──────────┘ └──────────────┘ └──────────────┘ └──────────────┘    │     │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### IPC Channels
+
+| Channel | Direction | Description |
+|---------|-----------|-------------|
+| `system:get-monitors` | Request | Get list of connected monitors |
+| `system:get-sessions` | Request | Get list of recorded sessions |
+| `system:check-dependencies` | Request | Check if OS dependencies are installed |
+| `collection:start` | Request | Start video + input recording |
+| `collection:stop` | Request | Stop recording, return session info |
+| `collection:get-status` | Request | Get current recording status |
+| `collection:event-count` | Event | Real-time event count updates |
+| `collection:stopped` | Event | Notification when recording stops |
+| `cleaning:start` | Request | Start data cleaning/preprocessing |
+| `cleaning:get-progress` | Request | Get cleaning progress |
+| `cleaning:progress` | Event | Real-time cleaning progress updates |
+| `training:start` | Request | Start model training |
+| `training:stop` | Request | Stop training |
+| `training:get-status` | Request | Get training status |
+| `training:epoch` | Event | Epoch completion metrics |
+| `training:complete` | Event | Training completed notification |
+| `inference:start` | Request | Start AI agent |
+| `inference:stop` | Request | Stop AI agent |
+| `inference:get-status` | Request | Get inference status |
+| `inference:stats` | Event | Real-time FPS and latency stats |

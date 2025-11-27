@@ -15,6 +15,6 @@
     "declarationMap": false,
     "sourceMap": true
   },
-  "include": ["src/main/**/*", "src/shared/**/*"],
+  "include": ["src/main/**/*", "src/shared/**/*", "src/cli/**/*"],
   "exclude": ["node_modules", "src/renderer"]
 }
