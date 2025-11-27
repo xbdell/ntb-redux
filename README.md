@@ -131,7 +131,7 @@ ntb-redux/
 │   ├── renderer/                # Electron renderer process (React)
 │   │   ├── index.tsx            # React entry point
 │   │   ├── App.tsx              # Main app with routing
-│   │   ├── index.css            # Global styles
+│   │   ├── styles/index.css     # TailwindCSS + DaisyUI styles
 │   │   └── pages/               # React page components
 │   │       ├── CollectPage.tsx  # Data collection UI
 │   │       ├── CleanPage.tsx    # Data cleaning UI
@@ -153,6 +153,7 @@ ntb-redux/
 ├── tsconfig.json                # Base TypeScript config
 ├── tsconfig.main.json           # Main process TypeScript config
 ├── vite.config.ts               # Vite config for renderer
+├── postcss.config.js            # PostCSS config for TailwindCSS
 ├── electron-builder.json        # Electron packaging config
 └── package.json
 ```

@@ -48,162 +48,177 @@ function TrainPage() {
   const bestValLoss = epochHistory.length > 0 ? Math.min(...epochHistory.map((e) => e.valLoss)) : 0;
 
   return (
-    <div>
-      <div className="page-header">
-        <h2>Train Model</h2>
-        <p>Train a neural network on your cleaned data</p>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div>
+        <h2 className="text-2xl font-semibold mb-1">Train Model</h2>
+        <p className="text-base-content/60">Train a neural network on your cleaned data</p>
       </div>
 
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">Training Status</span>
-          <span className={`status-badge ${isTraining ? 'warning' : 'idle'}`}>
-            <span className={`status-dot ${isTraining ? 'pulse' : ''}`} />
-            {isTraining ? 'Training' : 'Idle'}
-          </span>
+      {/* Training Status Card */}
+      <div className="card bg-base-200">
+        <div className="card-body">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="card-title text-lg">Training Status</h3>
+            <div className={`badge ${isTraining ? 'badge-warning' : 'badge-ghost'} gap-2`}>
+              <span
+                className={`w-2 h-2 rounded-full ${isTraining ? 'bg-warning animate-pulse-opacity' : 'bg-base-content/40'}`}
+              ></span>
+              {isTraining ? 'Training' : 'Idle'}
+            </div>
+          </div>
+
+          {isTraining ? (
+            <div className="space-y-4">
+              {/* Stats */}
+              <div className="stats bg-base-300 w-full">
+                <div className="stat">
+                  <div className="stat-title">Epoch</div>
+                  <div className="stat-value text-primary">
+                    {currentEpoch}/{epochs}
+                  </div>
+                </div>
+                <div className="stat">
+                  <div className="stat-title">Train Loss</div>
+                  <div className="stat-value text-lg">
+                    {epochHistory.length > 0
+                      ? epochHistory[epochHistory.length - 1].trainLoss.toFixed(4)
+                      : '-'}
+                  </div>
+                </div>
+                <div className="stat">
+                  <div className="stat-title">Val Loss</div>
+                  <div className="stat-value text-lg">
+                    {epochHistory.length > 0
+                      ? epochHistory[epochHistory.length - 1].valLoss.toFixed(4)
+                      : '-'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <progress
+                className="progress progress-primary w-full"
+                value={currentEpoch}
+                max={epochs}
+              ></progress>
+
+              {/* Training History */}
+              <div className="bg-base-300 rounded-lg p-4 max-h-48 overflow-y-auto">
+                <div className="text-sm text-base-content/60 mb-2">Training History</div>
+                <div className="space-y-1">
+                  {epochHistory.map((e) => (
+                    <div key={e.epoch} className="text-xs flex gap-4 font-mono">
+                      <span className="text-base-content/60">Epoch {e.epoch}</span>
+                      <span>
+                        Train: <span className="text-success">{e.trainLoss.toFixed(4)}</span>
+                      </span>
+                      <span>
+                        Val: <span className="text-warning">{e.valLoss.toFixed(4)}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button className="btn btn-error" onClick={handleStopTraining}>
+                Stop Training
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Configuration Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Model Architecture</span>
+                  </label>
+                  <select
+                    className="select select-bordered w-full"
+                    value={modelType}
+                    onChange={(e) =>
+                      setModelType(e.target.value as 'custom_cnn' | 'mobilenet' | 'efficientnet')
+                    }
+                  >
+                    <option value="custom_cnn">Custom CNN (Default)</option>
+                    <option value="mobilenet">MobileNet</option>
+                    <option value="efficientnet">EfficientNet</option>
+                  </select>
+                </div>
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Epochs</span>
+                  </label>
+                  <input
+                    type="number"
+                    className="input input-bordered w-full"
+                    value={epochs}
+                    onChange={(e) => setEpochs(parseInt(e.target.value))}
+                    min={1}
+                    max={100}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Batch Size</span>
+                  </label>
+                  <select
+                    className="select select-bordered w-full"
+                    value={batchSize}
+                    onChange={(e) => setBatchSize(parseInt(e.target.value))}
+                  >
+                    <option value={8}>8</option>
+                    <option value={16}>16</option>
+                    <option value={32}>32</option>
+                    <option value={64}>64</option>
+                  </select>
+                </div>
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Learning Rate</span>
+                  </label>
+                  <select
+                    className="select select-bordered w-full"
+                    value={learningRate}
+                    onChange={(e) => setLearningRate(parseFloat(e.target.value))}
+                  >
+                    <option value={0.01}>0.01</option>
+                    <option value={0.001}>0.001</option>
+                    <option value={0.0001}>0.0001</option>
+                  </select>
+                </div>
+              </div>
+
+              <button className="btn btn-primary btn-lg w-full" onClick={handleStartTraining}>
+                Start Training
+              </button>
+
+              {epochHistory.length > 0 && (
+                <div className="text-sm text-base-content/60">
+                  Last training - Best validation loss:{' '}
+                  <span className="text-success font-medium">{bestValLoss.toFixed(4)}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-
-        {isTraining ? (
-          <div>
-            <div className="grid-3 mb-4">
-              <div>
-                <div className="stat-value">
-                  {currentEpoch}/{epochs}
-                </div>
-                <div className="stat-label">Epoch</div>
-              </div>
-              <div>
-                <div className="stat-value">
-                  {epochHistory.length > 0 ? epochHistory[epochHistory.length - 1].trainLoss.toFixed(4) : '-'}
-                </div>
-                <div className="stat-label">Train Loss</div>
-              </div>
-              <div>
-                <div className="stat-value">
-                  {epochHistory.length > 0 ? epochHistory[epochHistory.length - 1].valLoss.toFixed(4) : '-'}
-                </div>
-                <div className="stat-label">Val Loss</div>
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <div className="progress-bar">
-                <div
-                  className="progress-bar-fill"
-                  style={{ width: `${(currentEpoch / epochs) * 100}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Simple loss history */}
-            <div
-              className="mb-4"
-              style={{
-                padding: '1rem',
-                backgroundColor: 'var(--bg-primary)',
-                borderRadius: '0.5rem',
-                maxHeight: '200px',
-                overflowY: 'auto',
-              }}
-            >
-              <div className="text-sm text-muted mb-2">Training History</div>
-              {epochHistory.map((e) => (
-                <div key={e.epoch} className="text-xs flex gap-4">
-                  <span>Epoch {e.epoch}</span>
-                  <span>Train: {e.trainLoss.toFixed(4)}</span>
-                  <span>Val: {e.valLoss.toFixed(4)}</span>
-                </div>
-              ))}
-            </div>
-
-            <button className="btn btn-danger" onClick={handleStopTraining}>
-              Stop Training
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div className="grid-2 mb-4">
-              <div className="form-group">
-                <label className="form-label">Model Architecture</label>
-                <select
-                  className="form-select"
-                  value={modelType}
-                  onChange={(e) =>
-                    setModelType(e.target.value as 'custom_cnn' | 'mobilenet' | 'efficientnet')
-                  }
-                >
-                  <option value="custom_cnn">Custom CNN (Default)</option>
-                  <option value="mobilenet">MobileNet</option>
-                  <option value="efficientnet">EfficientNet</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Epochs</label>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={epochs}
-                  onChange={(e) => setEpochs(parseInt(e.target.value))}
-                  min={1}
-                  max={100}
-                />
-              </div>
-            </div>
-
-            <div className="grid-2 mb-4">
-              <div className="form-group">
-                <label className="form-label">Batch Size</label>
-                <select
-                  className="form-select"
-                  value={batchSize}
-                  onChange={(e) => setBatchSize(parseInt(e.target.value))}
-                >
-                  <option value={8}>8</option>
-                  <option value={16}>16</option>
-                  <option value={32}>32</option>
-                  <option value={64}>64</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Learning Rate</label>
-                <select
-                  className="form-select"
-                  value={learningRate}
-                  onChange={(e) => setLearningRate(parseFloat(e.target.value))}
-                >
-                  <option value={0.01}>0.01</option>
-                  <option value={0.001}>0.001</option>
-                  <option value={0.0001}>0.0001</option>
-                </select>
-              </div>
-            </div>
-
-            <button className="btn btn-primary btn-lg" onClick={handleStartTraining}>
-              Start Training
-            </button>
-
-            {epochHistory.length > 0 && (
-              <div className="mt-4">
-                <span className="text-sm text-muted">
-                  Last training - Best validation loss: {bestValLoss.toFixed(4)}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">Model Output</span>
-        </div>
-        <div className="text-sm text-muted">
-          <p>Trained model will be saved to:</p>
-          <code>./models/model/</code>
-          <ul style={{ marginTop: '0.5rem', marginLeft: '1rem' }}>
-            <li>model.json - Architecture</li>
-            <li>model.weights.bin - Weights</li>
-          </ul>
+      {/* Model Output Card */}
+      <div className="card bg-base-200">
+        <div className="card-body">
+          <h3 className="card-title text-lg mb-4">Model Output</h3>
+          <div className="text-sm text-base-content/60">
+            <p className="mb-2">Trained model will be saved to:</p>
+            <code>./models/model/</code>
+            <ul className="list-disc list-inside mt-2 space-y-1">
+              <li>model.json - Architecture</li>
+              <li>model.weights.bin - Weights</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>

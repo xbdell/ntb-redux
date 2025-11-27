@@ -108,144 +108,172 @@ function CollectPage() {
 
   if (loading) {
     return (
-      <div className="page-header">
-        <h2>Collect Training Data</h2>
-        <p className="text-muted">Loading...</p>
+      <div>
+        <h2 className="text-2xl font-semibold mb-2">Collect Training Data</h2>
+        <p className="text-base-content/60">
+          <span className="loading loading-spinner loading-sm mr-2"></span>
+          Loading...
+        </p>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <h2>Collect Training Data</h2>
-        <p>Record gameplay video and input events for training</p>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div>
+        <h2 className="text-2xl font-semibold mb-1">Collect Training Data</h2>
+        <p className="text-base-content/60">Record gameplay video and input events for training</p>
       </div>
 
-      {/* Dependencies check */}
+      {/* Dependencies Alert */}
       {!allDepsInstalled && (
-        <div className="card" style={{ borderColor: 'var(--error)' }}>
-          <div className="card-header">
-            <span className="card-title text-error">Missing Dependencies</span>
+        <div className="alert alert-error">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="stroke-current shrink-0 h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div>
+            <h3 className="font-bold">Missing Dependencies</h3>
+            <p className="text-sm">Install missing dependencies to enable data collection:</p>
+            <code className="text-sm mt-1 block">
+              sudo apt install {missingDeps.map(([name]) => name).join(' ')}
+            </code>
+            {!dependencies['input_group'] && (
+              <p className="text-sm mt-2">
+                You also need to be in the &quot;input&quot; group:{' '}
+                <code>sudo usermod -aG input $USER</code>
+              </p>
+            )}
           </div>
-          <p className="text-sm text-muted mb-2">
-            Install missing dependencies to enable data collection:
-          </p>
-          <code className="text-sm">
-            sudo apt install {missingDeps.map(([name]) => name).join(' ')}
-          </code>
-          {!dependencies['input_group'] && (
-            <p className="text-sm text-warning mt-2">
-              You also need to be in the &quot;input&quot; group: <code>sudo usermod -aG input $USER</code>
-            </p>
-          )}
         </div>
       )}
 
-      {/* Recording status */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">Recording Status</span>
-          <span className={`status-badge ${isRecording ? 'success' : 'idle'}`}>
-            <span className={`status-dot ${isRecording ? 'pulse' : ''}`} />
-            {isRecording ? 'Recording' : 'Idle'}
-          </span>
-        </div>
+      {/* Recording Status Card */}
+      <div className="card bg-base-200">
+        <div className="card-body">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="card-title text-lg">Recording Status</h3>
+            <div className={`badge ${isRecording ? 'badge-success' : 'badge-ghost'} gap-2`}>
+              <span
+                className={`w-2 h-2 rounded-full ${isRecording ? 'bg-success animate-pulse-opacity' : 'bg-base-content/40'}`}
+              ></span>
+              {isRecording ? 'Recording' : 'Idle'}
+            </div>
+          </div>
 
-        {isRecording ? (
-          <div>
-            <div className="grid-2 mb-4">
-              <div>
-                <div className="stat-value">{eventCount.toLocaleString()}</div>
-                <div className="stat-label">Events Captured</div>
+          {isRecording ? (
+            <div className="space-y-4">
+              {/* Stats */}
+              <div className="stats bg-base-300 w-full">
+                <div className="stat">
+                  <div className="stat-title">Events Captured</div>
+                  <div className="stat-value text-primary">{eventCount.toLocaleString()}</div>
+                </div>
+                <div className="stat">
+                  <div className="stat-title">Duration</div>
+                  <div className="stat-value">{duration}s</div>
+                </div>
               </div>
-              <div>
-                <div className="stat-value">{duration}s</div>
-                <div className="stat-label">Duration</div>
-              </div>
+
+              <button className="btn btn-error btn-lg w-full" onClick={handleStopRecording}>
+                Stop Recording
+              </button>
             </div>
-            <button className="btn btn-danger btn-lg" onClick={handleStopRecording}>
-              Stop Recording
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div className="grid-2 mb-4">
-              <div className="form-group">
-                <label className="form-label">Frame Rate</label>
-                <select
-                  className="form-select"
-                  value={fps}
-                  onChange={(e) => setFps(parseInt(e.target.value) as 30 | 60)}
-                >
-                  <option value={30}>30 FPS</option>
-                  <option value={60}>60 FPS</option>
-                </select>
+          ) : (
+            <div className="space-y-4">
+              {/* Configuration */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Frame Rate</span>
+                  </label>
+                  <select
+                    className="select select-bordered w-full"
+                    value={fps}
+                    onChange={(e) => setFps(parseInt(e.target.value) as 30 | 60)}
+                  >
+                    <option value={30}>30 FPS</option>
+                    <option value={60}>60 FPS</option>
+                  </select>
+                </div>
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Target Monitor</span>
+                  </label>
+                  <select
+                    className="select select-bordered w-full"
+                    value={selectedMonitor}
+                    onChange={(e) => setSelectedMonitor(e.target.value)}
+                  >
+                    <option value="leftmost">Leftmost Monitor</option>
+                    <option value="primary">Primary Monitor</option>
+                  </select>
+                </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Target Monitor</label>
-                <select
-                  className="form-select"
-                  value={selectedMonitor}
-                  onChange={(e) => setSelectedMonitor(e.target.value)}
-                >
-                  <option value="leftmost">Leftmost Monitor</option>
-                  <option value="primary">Primary Monitor</option>
-                </select>
-              </div>
-            </div>
-            {monitors.length > 0 && (
-              <p className="text-xs text-muted mb-4">
-                Detected: {monitors.map((m) => `${m.name} (${m.width}x${m.height})`).join(', ')}
+
+              {monitors.length > 0 && (
+                <p className="text-xs text-base-content/60">
+                  Detected: {monitors.map((m) => `${m.name} (${m.width}x${m.height})`).join(', ')}
+                </p>
+              )}
+
+              <button
+                className="btn btn-primary btn-lg w-full"
+                onClick={handleStartRecording}
+                disabled={!allDepsInstalled}
+              >
+                Start Recording
+              </button>
+
+              <p className="text-xs text-base-content/60 text-center">
+                Press <kbd>SHIFT+CTRL+L</kbd> to stop recording
               </p>
-            )}
-            <button
-              className="btn btn-primary btn-lg"
-              onClick={handleStartRecording}
-              disabled={!allDepsInstalled}
-            >
-              Start Recording
-            </button>
-            <p className="text-xs text-muted mt-2">
-              Press <kbd>SHIFT+CTRL+L</kbd> to stop recording
-            </p>
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Recent sessions */}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">Recent Sessions</span>
-          <span className="text-sm text-muted">{sessions.length} session(s)</span>
-        </div>
-        {sessions.length === 0 ? (
-          <p className="text-muted">No sessions recorded yet</p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {sessions.slice(0, 5).map((session) => (
-              <div
-                key={session.sessionId}
-                className="flex justify-between items-center"
-                style={{
-                  padding: '0.75rem',
-                  backgroundColor: 'var(--bg-primary)',
-                  borderRadius: '0.5rem',
-                }}
-              >
-                <div>
-                  <div className="text-sm">{session.sessionId}</div>
-                  <div className="text-xs text-muted">
-                    {session.duration.toFixed(1)}s | {session.eventCount.toLocaleString()} events
+      {/* Recent Sessions Card */}
+      <div className="card bg-base-200">
+        <div className="card-body">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="card-title text-lg">Recent Sessions</h3>
+            <span className="text-sm text-base-content/60">{sessions.length} session(s)</span>
+          </div>
+
+          {sessions.length === 0 ? (
+            <p className="text-base-content/60">No sessions recorded yet</p>
+          ) : (
+            <div className="space-y-2">
+              {sessions.slice(0, 5).map((session) => (
+                <div
+                  key={session.sessionId}
+                  className="flex justify-between items-center bg-base-300 rounded-lg p-3"
+                >
+                  <div>
+                    <div className="font-medium text-sm">{session.sessionId}</div>
+                    <div className="text-xs text-base-content/60">
+                      {session.duration.toFixed(1)}s | {session.eventCount.toLocaleString()} events
+                    </div>
+                  </div>
+                  <div className="text-xs text-base-content/60">
+                    {(session.videoSize / 1024 / 1024).toFixed(1)} MB
                   </div>
                 </div>
-                <div className="text-xs text-muted">
-                  {(session.videoSize / 1024 / 1024).toFixed(1)} MB
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

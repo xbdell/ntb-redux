@@ -61,6 +61,7 @@ src/
 ├── renderer/                # Electron renderer (React)
 │   ├── index.tsx            # React entry point
 │   ├── App.tsx              # Main app with routing
+│   ├── styles/index.css     # TailwindCSS + DaisyUI (CSS-first config)
 │   └── pages/               # Page components
 │
 └── shared/                  # Shared types
@@ -73,6 +74,7 @@ src/
 - Node.js with ES modules
 - Electron for desktop GUI
 - React with Vite for renderer
+- TailwindCSS v4 + DaisyUI for styling
 - TensorFlow.js for model training/inference
 - FFmpeg for video capture
 - evdev for Linux input capture
