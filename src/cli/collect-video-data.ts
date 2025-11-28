@@ -35,19 +35,19 @@ async function main(): Promise<void> {
   // Configuration for video data collection
   const config: VideoCollectionConfig = {
     outputDir: resolvedPaths.trainingData,
-    gameProcessName: appConfig.collection.gameProcessName,
+    targetWindowName: appConfig.collection.targetWindowName,
     recordingFramerate: fps as 30 | 60,
     videoCodec: 'libx264',
     compressionQuality: 18, // CRF 18 = high quality
     targetMonitor: appConfig.collection.defaultMonitor,
   };
 
-  console.log('\n╔════════════════════════════════════════╗');
-  console.log('║  Nuclear Throne Video Data Collector  ║');
-  console.log('╚════════════════════════════════════════╝\n');
+  console.log('\n╔══════════════════════════════════════╗');
+  console.log('║     Video Training Data Collector    ║');
+  console.log('╚══════════════════════════════════════╝\n');
 
   console.log('Configuration:');
-  console.log(`  Game: ${config.gameProcessName}`);
+  console.log(`  Target window: ${config.targetWindowName || '(full monitor)'}`);
   console.log(`  Frame rate: ${config.recordingFramerate} fps`);
   console.log(`  Output: ${config.outputDir}`);
   console.log(`  Monitor: ${config.targetMonitor}`);

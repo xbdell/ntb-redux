@@ -7,7 +7,7 @@
   "collection": {
     "defaultFps": 30,
     "defaultMonitor": "leftmost",
-    "gameProcessName": "nuclearthrone"
+    "targetWindowName": ""
   },
   "training": {
     "defaultModelType": "custom_cnn",

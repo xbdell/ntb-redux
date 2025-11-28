@@ -1,6 +1,6 @@
-# ntb-redux
+# app-training-bot
 
-LM powered bot to play the video game nuclear throne. Currently in a very alpha state. There are tons of things that can be done to improve it and some of the design decisions (mainly the data cleaning layer) are questionable to say the least. This works as a decent proof of concept and a way to get all the steps for the project laid out. Next up I look forward to going through and improving/cleaning everything up by hand.
+LM powered bot to control applications via imitation learning. Currently in a very alpha state. There are tons of things that can be done to improve it and some of the design decisions (mainly the data cleaning layer) are questionable to say the least. This works as a decent proof of concept and a way to get all the steps for the project laid out. Next up I look forward to going through and improving/cleaning everything up by hand.
 
 ## History
 
@@ -24,7 +24,7 @@ There are two methods for collecting training data:
 
 #### Method 1: Video-based Collection (Recommended)
 
-Ensure that Nuclear Throne is running fullscreen on your leftmost monitor.
+Ensure the target application is running fullscreen on your leftmost monitor.
 
 `npm run collect-video`
 
@@ -34,7 +34,7 @@ This will:
 - Record video (30fps by default) and all keyboard/mouse input
 - Press **SHIFT+CTRL+L** again to stop recording
 - Save to `training_data/session_TIMESTAMP/` containing:
-  - `video.mp4` - Screen recording of gameplay
+  - `video.mp4` - Screen recording
   - `events.jsonl` - All keyboard/mouse events with timestamps
   - `metadata.json` - Session information
 
@@ -51,7 +51,7 @@ This will:
 
 #### Method 2: Screenshot-based Collection (Legacy)
 
-Ensure that nuclearthrone window is running and visible (preferably on the first level so we can skip menus tainting the dataset).
+Ensure that target application window is running and visible (preferably in a consistent state).
 
 `npm run collect`
 
@@ -77,11 +77,11 @@ looks in `cleaned_data` and uses that info for training our tensorflow inference
 
 ### Run the trained agent
 
-We finally have a happy trained agent, time to allow it to play the game!
+We finally have a happy trained agent, time to allow it to control the application!
 
 `npm run agent-mode`
 
-will find the target window, by default `nuclearthrone`, starts grabbing screenshots of it, and then passes them into our trained tensorflow model (loaded from `models/model`).
+will find the target window (configured in settings), starts grabbing screenshots of it, and then passes them into our trained tensorflow model (loaded from `models/model`).
 
 ## Electron GUI
 
@@ -110,12 +110,12 @@ The Electron GUI supports a global hotkey for recording:
 
 - **Ctrl+Shift+L** - Toggle recording on/off (works even when the app is in the background)
 
-This allows you to start/stop recording without switching to the GUI window, which is useful when playing the game in fullscreen.
+This allows you to start/stop recording without switching to the GUI window, which is useful when the target application is fullscreen.
 
 ## Project Structure
 
 ```
-ntb-redux/
+app-training-bot/
 ├── src/
 │   ├── cli/                     # Standalone CLI tools
 │   │   ├── index.ts             # CLI entry point
@@ -123,11 +123,11 @@ ntb-redux/
 │   │   ├── collect-video-data.ts     # Video collection CLI
 │   │   ├── clean-training-data.ts    # Data preprocessing
 │   │   ├── tfjs-training-setup.ts    # TensorFlow.js training
-│   │   ├── nuclear-throne-ai.ts      # Game-playing agent
+│   │   ├── target-app-agent.ts       # Application control agent
 │   │   ├── display-capture.ts        # FFmpeg screen recording
 │   │   ├── event-recorder.ts         # Keyboard/mouse event capture
 │   │   ├── screenshot-capture.ts     # Screenshot utilities
-│   │   ├── game-controller.ts        # Game input controller
+│   │   ├── game-controller.ts        # Input controller
 │   │   ├── realtime-inference.ts     # Real-time model inference
 │   │   └── ...
 │   │
@@ -208,8 +208,8 @@ The Electron app uses a secure IPC (Inter-Process Communication) architecture wi
 │      │              │                │                │            │     │
 │      ▼              ▼                ▼                ▼            │     │
 │ ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │     │
-│ │VideoData │ │TrainingData  │ │ TensorFlow   │ │NuclearThrone │    │     │
-│ │Collector │ │   Cleaner    │ │   Trainer    │ │     AI       │    │     │
+│ │VideoData │ │TrainingData  │ │ TensorFlow   │ │ TargetApp    │    │     │
+│ │Collector │ │   Cleaner    │ │   Trainer    │ │   Agent      │    │     │
 │ └──────────┘ └──────────────┘ └──────────────┘ └──────────────┘    │     │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -259,7 +259,7 @@ The application uses a configuration file (`ntb-config.json`) to store user pref
   "collection": {
     "defaultFps": 30,
     "defaultMonitor": "leftmost",
-    "gameProcessName": "nuclearthrone"
+    "targetWindowName": ""
   },
   "training": {
     "defaultModelType": "custom_cnn",
@@ -283,7 +283,7 @@ The application uses a configuration file (`ntb-config.json`) to store user pref
 | paths | models | Directory for trained models | `./models` |
 | collection | defaultFps | Default recording frame rate | `30` |
 | collection | defaultMonitor | Which monitor to record | `leftmost` |
-| collection | gameProcessName | Game window name | `nuclearthrone` |
+| collection | targetWindowName | Target window name (empty = full monitor) | `` |
 | training | defaultModelType | Default model architecture | `custom_cnn` |
 | training | defaultEpochs | Default training epochs | `10` |
 | training | defaultBatchSize | Default batch size | `32` |

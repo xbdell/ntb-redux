@@ -28,7 +28,7 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
       sandbox: false, // Required for some native module access
     },
-    title: 'Nuclear Throne Bot',
+    title: 'NTB-Redux',
     backgroundColor: '#1a1a2e',
   });
 

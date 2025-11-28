@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an LM-powered bot for playing the video game Nuclear Throne. The project uses TypeScript with Node.js and includes both CLI tools and an Electron GUI.
+This is an LM-powered bot to control applications via imitation learning. The project uses TypeScript with Node.js and includes both CLI tools and an Electron GUI.
 
 ## Development Commands
 
@@ -15,7 +15,7 @@ This is an LM-powered bot for playing the video game Nuclear Throne. The project
 - `npm run collect-video:60fps` - Collect at 60fps
 - `npm run clean-data` - Clean and preprocess training data
 - `npm run train` - Train the TensorFlow.js model
-- `npm run agent-mode` - Run the trained agent to play the game
+- `npm run agent-mode` - Run the trained agent to control the application
 - `npm run safe-test` - Test agent without controller (prediction only)
 
 ### Electron GUI
@@ -46,11 +46,11 @@ src/
 │   ├── collect-video-data.ts     # Video collection CLI entry
 │   ├── clean-training-data.ts    # Data preprocessing
 │   ├── tfjs-training-setup.ts    # TensorFlow.js training
-│   ├── nuclear-throne-ai.ts      # Game-playing agent
+│   ├── target-app-agent.ts       # Application control agent
 │   ├── display-capture.ts        # FFmpeg screen recording
 │   ├── event-recorder.ts         # Keyboard/mouse event capture
 │   ├── screenshot-capture.ts     # Screenshot utilities
-│   ├── game-controller.ts        # Game input controller
+│   ├── game-controller.ts        # Input controller
 │   └── realtime-inference.ts     # Real-time model inference
 │
 ├── main/                    # Electron main process
@@ -104,10 +104,10 @@ sudo usermod -aG input $USER
 
 ## Data Flow
 
-1. **Collect** - Record gameplay video + input events to `training_data/`
+1. **Collect** - Record video + input events to `training_data/`
 2. **Clean** - Preprocess and split data to `cleaned_data/`
 3. **Train** - Train TensorFlow.js model, save to `models/`
-4. **Play** - Load model and control game in real-time
+4. **Run Agent** - Load model and control application in real-time
 
 ## Configuration
 
@@ -115,7 +115,7 @@ The application uses `ntb-config.json` for user settings. Both CLI tools and the
 
 Key config sections:
 - `paths` - trainingData, cleanedData, models directories
-- `collection` - defaultFps, defaultMonitor, gameProcessName
+- `collection` - defaultFps, defaultMonitor, targetWindowName
 - `training` - defaultModelType, defaultEpochs, defaultBatchSize, defaultLearningRate
 - `inference` - defaultFps, defaultSmoothingFactor
 

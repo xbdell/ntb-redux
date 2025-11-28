@@ -60,8 +60,8 @@ function PlayPage() {
     <div className="space-y-6">
       {/* Page Header */}
       <div>
-        <h2 className="text-2xl font-semibold mb-1">Play Game</h2>
-        <p className="text-base-content/60">Let the trained model play Nuclear Throne</p>
+        <h2 className="text-2xl font-semibold mb-1">Run Agent</h2>
+        <p className="text-base-content/60">Let the trained model control the target application</p>
       </div>
 
       {/* Emergency Stop - Always visible when running */}
@@ -105,7 +105,7 @@ function PlayPage() {
                   <div className="stat-value text-lg">{inferenceTime}ms</div>
                 </div>
                 <div className="stat">
-                  <div className="stat-title">Game Window</div>
+                  <div className="stat-title">Target Window</div>
                   <div className={`stat-value text-lg ${gameFound ? 'text-success' : 'text-error'}`}>
                     {gameFound ? 'Yes' : 'No'}
                   </div>
@@ -188,7 +188,7 @@ function PlayPage() {
                     checked={useController}
                     onChange={(e) => setUseController(e.target.checked)}
                   />
-                  <span className="label-text">Enable game controller (send inputs to game)</span>
+                  <span className="label-text">Enable controller (send inputs to application)</span>
                 </label>
                 {!useController && (
                   <div className="alert alert-warning mt-2">
@@ -206,14 +206,14 @@ function PlayPage() {
                       />
                     </svg>
                     <span className="text-sm">
-                      Safe mode: Model will run but no inputs will be sent to the game
+                      Safe mode: Model will run but no inputs will be sent to the application
                     </span>
                   </div>
                 )}
               </div>
 
               <button className="btn btn-primary btn-lg w-full" onClick={handleStart}>
-                Start Playing
+                Start Agent
               </button>
             </div>
           )}
@@ -225,8 +225,8 @@ function PlayPage() {
         <div className="card-body">
           <h3 className="card-title text-lg mb-4">Requirements</h3>
           <ul className="list-disc list-inside text-sm text-base-content/60 space-y-1">
-            <li>Nuclear Throne must be running</li>
-            <li>Game window must be visible (not minimized)</li>
+            <li>Target application must be running</li>
+            <li>Target window must be visible (not minimized)</li>
             <li>Trained model must exist in ./models/model/</li>
             <li>Run with safe mode first to verify model behavior</li>
           </ul>

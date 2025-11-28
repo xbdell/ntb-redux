@@ -11,7 +11,7 @@ interface ControllerConfig {
   debugMode: boolean;
 }
 
-// TODO: Add all keys to this, we are missing q and e for nuclear throne at least
+// TODO: Add all keys to this - extend based on target application requirements
 interface KeyState {
   w: boolean;
   a: boolean;

@@ -8,7 +8,7 @@ async function main(): Promise<void> {
     outputDir: join(process.cwd(), 'training_data', `session_${Date.now()}`),
     captureIntervalMs: 500, // Capture every 500ms
     saveScreenshotsToFiles: true, // Save screenshots as files for easier inspection
-    gameWindowTitle: 'nuclearthrone',
+    gameWindowTitle: '',  // Empty = full monitor capture
     maxDataPoints: 100, // Collect 100 data points (50 seconds at 500ms intervals)
   };
 

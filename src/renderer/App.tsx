@@ -46,7 +46,7 @@ function App() {
         <aside className="w-56 bg-base-200 border-r border-base-300 flex flex-col">
           {/* Header */}
           <div className="px-4 py-4 border-b border-base-300">
-            <h1 className="text-lg font-semibold text-primary">Nuclear Throne Bot</h1>
+            <h1 className="text-lg font-semibold text-primary">NTB-Redux</h1>
             <span className="text-xs text-base-content/60">Training & Inference</span>
           </div>
 
@@ -73,7 +73,7 @@ function App() {
             <li>
               <NavLink to="/play" className={({ isActive }) => (isActive ? 'active' : '')}>
                 <PlayIcon />
-                Play Game
+                Run Agent
               </NavLink>
             </li>
             <li>

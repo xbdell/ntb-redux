@@ -112,7 +112,7 @@ function CollectPage() {
     try {
       await window.electronAPI.startCollection({
         outputDir: './training_data',
-        gameProcessName: 'nuclearthrone',
+        targetWindowName: '',  // Empty = full monitor capture
         recordingFramerate: fps,
         videoCodec: 'libx264',
         compressionQuality: 18,

@@ -7,7 +7,7 @@ import type { ChildProcess } from 'child_process';
 
 export interface VideoCollectionConfig {
   outputDir: string;
-  gameProcessName: string;
+  targetWindowName: string;
   recordingFramerate: 30 | 60;
   videoCodec: 'libx264' | 'libx265';
   compressionQuality: number; // CRF: 18-28, lower is better
@@ -17,7 +17,7 @@ export interface VideoCollectionConfig {
 export interface SessionMetadata {
   sessionId: string;
   timestamp: number;
-  gameProcess: string;
+  targetWindow: string;
   display: {
     monitorName: string;
     resolution: { width: number; height: number };
@@ -217,7 +217,7 @@ export class VideoDataCollector {
     const metadata: SessionMetadata = {
       sessionId: this.sessionId,
       timestamp: this.startTime,
-      gameProcess: this.config.gameProcessName,
+      targetWindow: this.config.targetWindowName,
       display: {
         monitorName: this.monitor.name,
         resolution: {

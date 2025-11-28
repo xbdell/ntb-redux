@@ -13,7 +13,7 @@ interface GameAction {
 
 interface InferenceConfig {
   modelPath: string;
-  gameWindowTitle: string;
+  targetWindowTitle: string;
   inferenceIntervalMs: number;
   smoothingFactor: number; // For action smoothing
   confidenceThreshold: number;
@@ -23,7 +23,7 @@ interface InferenceConfig {
 class RealTimeInference {
   private model: tf.LayersModel | null = null;
   private screenshotCapture: ScreenshotCapture;
-  private gameWindowId: string | null = null;
+  private targetWindowId: string | null = null;
   private config: InferenceConfig;
   private isRunning = false;
   private lastAction: GameAction | null = null;
@@ -46,8 +46,8 @@ class RealTimeInference {
     // Load the trained model
     await this.loadModel();
 
-    // Find game window
-    await this.findGameWindow();
+    // Find target window
+    await this.findTargetWindow();
 
     // Warm up the model with a dummy prediction
     this.warmUpModel();
@@ -71,20 +71,20 @@ class RealTimeInference {
     }
   }
 
-  private async findGameWindow(): Promise<void> {
-    console.log(`🔍 Looking for game window: ${this.config.gameWindowTitle}`);
+  private async findTargetWindow(): Promise<void> {
+    console.log(`🔍 Looking for target window: ${this.config.targetWindowTitle}`);
 
     const windows = await this.screenshotCapture.getWindows();
-    const gameWindow = windows.find((w) =>
-      w.title.toLowerCase().includes(this.config.gameWindowTitle.toLowerCase()),
+    const targetWindow = windows.find((w) =>
+      w.title.toLowerCase().includes(this.config.targetWindowTitle.toLowerCase()),
     );
 
-    if (!gameWindow) {
-      throw new Error(`Game window not found: ${this.config.gameWindowTitle}`);
+    if (!targetWindow) {
+      throw new Error(`Target window not found: ${this.config.targetWindowTitle}`);
     }
 
-    this.gameWindowId = gameWindow.id;
-    console.log(`✅ Found game window: ${gameWindow.title} (ID: ${gameWindow.id})`);
+    this.targetWindowId = targetWindow.id;
+    console.log(`✅ Found target window: ${targetWindow.title} (ID: ${targetWindow.id})`);
   }
 
   private warmUpModel(): void {
@@ -111,7 +111,7 @@ class RealTimeInference {
       return;
     }
 
-    if (!this.model || !this.gameWindowId) {
+    if (!this.model || !this.targetWindowId) {
       throw new Error('Inference engine not initialized');
     }
 
@@ -127,7 +127,7 @@ class RealTimeInference {
 
       try {
         // Capture screenshot
-        const screenshot = await this.captureGameScreen();
+        const screenshot = await this.captureTargetScreen();
 
         // Run inference
         const action = await this.predict(screenshot);
@@ -171,11 +171,11 @@ class RealTimeInference {
     this.isRunning = false;
   }
 
-  private async captureGameScreen(): Promise<tf.Tensor3D> {
-    if (!this.gameWindowId) throw new Error('Game window not found');
+  private async captureTargetScreen(): Promise<tf.Tensor3D> {
+    if (!this.targetWindowId) throw new Error('Target window not found');
 
     // Capture screenshot as buffer
-    const imageBuffer = await this.screenshotCapture.captureWindowToBuffer(this.gameWindowId);
+    const imageBuffer = await this.screenshotCapture.captureWindowToBuffer(this.targetWindowId);
 
     // Convert to tensor
     let imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
@@ -338,20 +338,20 @@ async function main(): Promise<void> {
     console.log('Usage: ts-node realtime-inference.ts <model-path> [options]');
     console.log('');
     console.log('Options:');
-    console.log('  --window <title>        Game window title (default: nuclearthrone)');
+    console.log('  --window <title>        Target window title');
     console.log('  --fps <number>          Target FPS (default: 10)');
     console.log('  --smoothing <number>    Action smoothing factor 0-1 (default: 0.3)');
     console.log('  --confidence <number>   Confidence threshold 0-1 (default: 0.3)');
     console.log('  --debug                 Enable debug output');
     console.log('');
     console.log('Example:');
-    console.log('  ts-node realtime-inference.ts ./models/model --fps 20 --debug');
+    console.log('  ts-node realtime-inference.ts ./models/model --window myapp --fps 20 --debug');
     process.exit(1);
   }
 
   const config: InferenceConfig = {
     modelPath: args[0] ?? '',
-    gameWindowTitle: 'nuclearthrone',
+    targetWindowTitle: '',
     inferenceIntervalMs: 100, // 10 FPS
     smoothingFactor: 0.3,
     confidenceThreshold: 0.3,
@@ -362,7 +362,7 @@ async function main(): Promise<void> {
   for (let i = 1; i < args.length; i++) {
     switch (args[i]) {
       case '--window':
-        config.gameWindowTitle = args[++i] ?? 'nuclearthrone';
+        config.targetWindowTitle = args[++i] ?? '';
         break;
       case '--fps':
         config.inferenceIntervalMs = 1000 / parseInt(args[++i] ?? '10');
@@ -379,7 +379,7 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log('🎮 Nuclear Throne AI - Real-time Inference');
+  console.log('🎮 Real-time Inference Engine');
   console.log('Configuration:', config);
 
   const inference = new RealTimeInference(config);

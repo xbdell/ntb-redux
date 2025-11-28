@@ -18,7 +18,7 @@ import { loadConfig, saveConfig, getResolvedPaths } from '../shared/config.js';
 import { VideoDataCollector } from '../cli/video-data-collector.js';
 import { TrainingDataCleaner } from '../cli/clean-training-data.js';
 import { TensorFlowTrainer } from '../cli/tfjs-training-setup.js';
-import { NuclearThroneAI } from '../cli/nuclear-throne-ai.js';
+import { TargetAppAgent } from '../cli/target-app-agent.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { promises as fs } from 'fs';
@@ -60,7 +60,7 @@ class CollectionService {
     // Convert shared config to VideoDataCollector config
     this.collector = new VideoDataCollector({
       outputDir: config.outputDir,
-      gameProcessName: config.gameProcessName,
+      targetWindowName: config.targetWindowName,
       recordingFramerate: config.recordingFramerate,
       videoCodec: config.videoCodec,
       compressionQuality: config.compressionQuality,
@@ -297,16 +297,16 @@ class TrainingService {
 }
 
 // ============================================================================
-// Inference Service - wraps NuclearThroneAI
+// Inference Service - wraps TargetAppAgent
 // ============================================================================
 
 class InferenceService {
-  private ai: NuclearThroneAI | null = null;
+  private ai: TargetAppAgent | null = null;
   private status: InferenceStatus = {
     isRunning: false,
     fps: 0,
     inferenceTimeMs: 0,
-    gameWindowFound: false,
+    targetWindowFound: false,
   };
 
   async start(config: InferenceConfig): Promise<void> {
@@ -314,9 +314,9 @@ class InferenceService {
       throw new Error('Inference already running');
     }
 
-    this.ai = new NuclearThroneAI({
+    this.ai = new TargetAppAgent({
       modelPath: config.modelPath,
-      gameWindowTitle: 'nuclearthrone',
+      targetWindowTitle: appConfig.collection.targetWindowName,
       targetFPS: config.targetFps,
       enableController: config.useController,
       safetyMode: true,
@@ -336,7 +336,7 @@ class InferenceService {
     try {
       await this.ai.initialize();
       this.status.isRunning = true;
-      this.status.gameWindowFound = true;
+      this.status.targetWindowFound = true;
 
       // Start the AI (this runs in a loop)
       this.ai.start().catch((error) => {
@@ -408,7 +408,7 @@ export async function toggleCollection(): Promise<boolean> {
     const resolvedPaths = getResolvedPaths(appConfig);
     await collectionService.start({
       outputDir: resolvedPaths.trainingData,
-      gameProcessName: appConfig.collection.gameProcessName,
+      targetWindowName: appConfig.collection.targetWindowName,
       recordingFramerate: appConfig.collection.defaultFps,
       videoCodec: 'libx264',
       compressionQuality: 18,
@@ -701,7 +701,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
         isRunning: false,
         fps: 0,
         inferenceTimeMs: 0,
-        gameWindowFound: false,
+        targetWindowFound: false,
       };
     }
     return inferenceService.getStatus();

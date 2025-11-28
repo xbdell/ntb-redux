@@ -10,7 +10,7 @@ export interface AppConfig {
   collection: {
     defaultFps: 30 | 60;
     defaultMonitor: 'leftmost' | 'primary';
-    gameProcessName: string;
+    targetWindowName: string;
   };
   training: {
     defaultModelType: 'custom_cnn' | 'mobilenet' | 'efficientnet';
@@ -33,7 +33,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   collection: {
     defaultFps: 30,
     defaultMonitor: 'leftmost',
-    gameProcessName: 'nuclearthrone',
+    targetWindowName: '',
   },
   training: {
     defaultModelType: 'custom_cnn',
@@ -49,7 +49,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 
 export interface VideoCollectionConfig {
   outputDir: string;
-  gameProcessName: string;
+  targetWindowName: string;
   recordingFramerate: 30 | 60;
   videoCodec: 'libx264' | 'libx265';
   compressionQuality: number;
@@ -133,7 +133,7 @@ export interface InferenceStatus {
   isRunning: boolean;
   fps: number;
   inferenceTimeMs: number;
-  gameWindowFound: boolean;
+  targetWindowFound: boolean;
 }
 
 export interface PredictedAction {

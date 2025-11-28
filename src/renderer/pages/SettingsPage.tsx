@@ -17,9 +17,10 @@ function SettingsPage() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(
-    null
-  );
+  const [saveMessage, setSaveMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   // Editable path state
   const [trainingDataPath, setTrainingDataPath] = useState('');
@@ -47,10 +48,7 @@ function SettingsPage() {
     init();
   }, []);
 
-  const handleSelectDirectory = async (
-    title: string,
-    setter: (path: string) => void
-  ) => {
+  const handleSelectDirectory = async (title: string, setter: (path: string) => void) => {
     const selectedPath = await window.electronAPI.selectDirectory(title);
     if (selectedPath) {
       setter(selectedPath);
@@ -112,7 +110,7 @@ function SettingsPage() {
   };
 
   const missingDeps = Object.entries(dependencies).filter(
-    ([name, installed]) => !installed && name !== 'input_group'
+    ([name, installed]) => !installed && name !== 'input_group',
   );
 
   if (loading) {
@@ -134,12 +132,16 @@ function SettingsPage() {
       {/* Page Header */}
       <div>
         <h2 className="text-2xl font-semibold mb-1">Settings</h2>
-        <p className="text-base-content/60">Configure application settings and check dependencies</p>
+        <p className="text-base-content/60">
+          Configure application settings and check dependencies
+        </p>
       </div>
 
       {/* Save Message */}
       {saveMessage && (
-        <div className={`alert ${saveMessage.type === 'success' ? 'alert-success' : 'alert-error'}`}>
+        <div
+          className={`alert ${saveMessage.type === 'success' ? 'alert-success' : 'alert-error'}`}
+        >
           <span>{saveMessage.text}</span>
         </div>
       )}
@@ -235,7 +237,11 @@ function SettingsPage() {
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
-            <button className="btn btn-ghost" onClick={handleReset} disabled={!hasChanges || saving}>
+            <button
+              className="btn btn-ghost"
+              onClick={handleReset}
+              disabled={!hasChanges || saving}
+            >
               Reset
             </button>
           </div>
@@ -278,7 +284,9 @@ function SettingsPage() {
               )}
               {!dependencies['input_group'] && (
                 <div>
-                  <p className="text-sm text-base-content/60 mb-2">Add yourself to the input group:</p>
+                  <p className="text-sm text-base-content/60 mb-2">
+                    Add yourself to the input group:
+                  </p>
                   <code className="text-sm block bg-base-300 p-2 rounded">
                     sudo usermod -aG input $USER
                   </code>
@@ -296,11 +304,11 @@ function SettingsPage() {
           <h3 className="card-title text-lg mb-4">About</h3>
           <div className="text-sm text-base-content/60 space-y-2">
             <p>
-              <strong className="text-base-content">Nuclear Throne Bot</strong> - AI-powered gameplay
+              <strong className="text-base-content">NTB-Redux</strong> - AI-powered automation
             </p>
             <p>
-              Train a neural network to play Nuclear Throne by recording your gameplay and using
-              imitation learning.
+              Train a neural network to control applications by recording your interactions and
+              using imitation learning.
             </p>
             <a
               href="https://github.com/github-bdem/ntb-redux"
