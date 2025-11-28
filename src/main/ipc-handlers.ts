@@ -1,5 +1,5 @@
 import type { IpcMain, BrowserWindow } from 'electron';
-import { dialog } from 'electron';
+import { dialog, shell } from 'electron';
 import type {
   VideoCollectionConfig,
   CleaningConfig,
@@ -576,6 +576,37 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('system:check-dependencies', async () => {
     return checkDependencies();
+  });
+
+  ipcMain.handle('system:open-directory', async (_event, dirPath: string) => {
+    try {
+      await shell.openPath(dirPath);
+      return true;
+    } catch (error) {
+      console.error('Failed to open directory:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('system:delete-session', async (_event, sessionId: string) => {
+    const resolvedPaths = getResolvedPaths(appConfig);
+    const sessionDir = join(resolvedPaths.trainingData, sessionId);
+
+    try {
+      // Verify it's a valid session directory
+      const stat = await fs.stat(sessionDir);
+      if (!stat.isDirectory() || !sessionId.startsWith('session_')) {
+        throw new Error('Invalid session directory');
+      }
+
+      // Delete the directory recursively
+      await fs.rm(sessionDir, { recursive: true, force: true });
+      console.log(`🗑️ Deleted session: ${sessionId}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to delete session ${sessionId}:`, error);
+      return false;
+    }
   });
 
   // Collection handlers

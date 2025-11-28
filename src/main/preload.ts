@@ -30,6 +30,10 @@ const electronAPI = {
   getSessions: (): Promise<SessionInfo[]> => ipcRenderer.invoke('system:get-sessions'),
   checkDependencies: (): Promise<{ [key: string]: boolean }> =>
     ipcRenderer.invoke('system:check-dependencies'),
+  openDirectory: (dirPath: string): Promise<boolean> =>
+    ipcRenderer.invoke('system:open-directory', dirPath),
+  deleteSession: (sessionId: string): Promise<boolean> =>
+    ipcRenderer.invoke('system:delete-session', sessionId),
 
   // Collection
   startCollection: (config: VideoCollectionConfig): Promise<void> =>
