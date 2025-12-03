@@ -40,13 +40,20 @@ This will:
 
 ### Clean the data
 
-NOTE: This step is really whacky right now, it really really needs work.
+> **STATUS: UNDER DEVELOPMENT** - The data cleaning utility is being updated to work with the new video-based capture format. See [Development Roadmap](#development-roadmap-data-cleaning-update) below.
 
-Once you have the desired number of training data sets, we would want to clean those data sets and format them for our tensorflow inference layer training. Right now we have extremely rudimentary cleaning, but this is just a first up proof of concept.
+Once you have the desired number of training data sets, we would want to clean those data sets and format them for our TensorFlow inference layer training.
 
 `npm run clean-data`
 
 Will clean data from `training_data` into `cleaned_data`.
+
+**What this step does:**
+1. Extracts frames from recorded video at the capture framerate
+2. Aligns input events (keyboard/mouse) to each frame by timestamp
+3. Converts raw events into training labels (movement vectors, aim position, actions)
+4. Splits data into train/validation/test sets
+5. Outputs in TensorFlow.js-compatible format
 
 ### Train the model
 
@@ -273,3 +280,60 @@ The application uses a configuration file (`ntb-config.json`) to store user pref
 | inference | defaultSmoothingFactor | Action smoothing (0-1) | `0.3` |
 
 Paths can be relative (resolved from current working directory) or absolute.
+
+## Development Roadmap: Data Cleaning Update
+
+The data cleaning utility (`src/cli/clean-training-data.ts`) is being updated to work with the new video-based data capture system.
+
+### Background
+
+The project transitioned from a screenshot-based capture system to a video-based one. The data cleaning utility still expects the old format and needs to be updated.
+
+| Component | Old Format | New Format |
+|-----------|------------|------------|
+| Visual data | Individual screenshots per frame | Continuous `video.mp4` |
+| Events | Pre-grouped per frame | Timestamped `events.jsonl` |
+| Metadata | `collection_metadata.json` with `dataPoints[]` | `metadata.json` with session info |
+
+### Implementation Phases
+
+#### Phase 1: Video Frame Extraction
+- Add FFmpeg-based frame extraction from `video.mp4`
+- Calculate frame timestamps based on recording framerate
+- Output frames as PNGs to session subdirectory
+
+#### Phase 2: Event-to-Frame Alignment
+- Parse JSONL event stream with timestamps
+- Assign events to frames using time windows
+- Track keyboard state across frame boundaries (for held keys)
+
+#### Phase 3: Data Structure Updates
+- Read new `metadata.json` format
+- Generate training data frames from extracted frames + aligned events
+- Update TypeScript interfaces
+
+#### Phase 4: Action Extraction Improvements
+- Fix mouse coordinate normalization
+- Implement proper key state tracking
+- Add relative mouse movement option (delta vs absolute)
+
+#### Phase 5: Output & Integration
+- Ensure output matches TensorFlow.js training expectations
+- Update `dataset_info.json` with extraction metadata
+- Verify GUI compatibility
+
+### Data Flow After Update
+
+```
+training_data/session_*/
+├── video.mp4          ──┐
+├── events.jsonl       ──┼──► clean-training-data.ts ──► cleaned_data/
+└── metadata.json      ──┘                               ├── train_data.json
+                                                         ├── val_data.json
+                                                         ├── test_data.json
+                                                         ├── screenshots/
+                                                         │   ├── frame_0.png
+                                                         │   ├── frame_1.png
+                                                         │   └── ...
+                                                         └── dataset_info.json
+```
