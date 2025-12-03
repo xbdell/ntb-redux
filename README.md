@@ -20,13 +20,9 @@ Currently only tested on Ubuntu 24 LTS. The following command will make sure all
 
 ### Collect Data
 
-There are two methods for collecting training data:
-
-#### Method 1: Video-based Collection (Recommended)
-
 Ensure the target application is running fullscreen on your leftmost monitor.
 
-`npm run collect-video`
+`npm run collect`
 
 This will:
 
@@ -40,22 +36,7 @@ This will:
 
 **Options:**
 
-- `npm run collect-video:60fps` - Record at 60fps (larger files)
-
-**Advantages:**
-
-- More storage efficient (compressed video vs thousands of PNGs)
-- Higher temporal fidelity (continuous frames)
-- Easier to review and verify training data quality
-- Better for 144Hz displays (records at 30/60fps, not full 144fps)
-
-#### Method 2: Screenshot-based Collection (Legacy)
-
-Ensure that target application window is running and visible (preferably in a consistent state).
-
-`npm run collect`
-
-This will collect all keyboard and mouse input for 100 seconds along with screenshots of the target window and put them into a `training_data/session_TIMESTAMP` folder
+- `npm run collect:60fps` - Record at 60fps (larger files)
 
 ### Clean the data
 
@@ -125,11 +106,11 @@ app-training-bot/
 │   │   ├── tfjs-training-setup.ts    # TensorFlow.js training
 │   │   ├── target-app-agent.ts       # Application control agent
 │   │   ├── display-capture.ts        # FFmpeg screen recording
-│   │   ├── event-recorder.ts         # Keyboard/mouse event capture
-│   │   ├── screenshot-capture.ts     # Screenshot utilities
-│   │   ├── game-controller.ts        # Input controller
-│   │   ├── realtime-inference.ts     # Real-time model inference
-│   │   └── ...
+│   │   ├── event-recorder.ts         # Keyboard/mouse event capture (evdev)
+│   │   ├── input-capture.ts          # Common input event types
+│   │   ├── window-utils.ts           # Window detection utilities (wmctrl/xwininfo)
+│   │   ├── game-controller.ts        # Input controller (xdotool)
+│   │   └── realtime-inference.ts     # Real-time model inference
 │   │
 │   ├── main/                    # Electron main process
 │   │   ├── index.ts             # Main entry point, window creation

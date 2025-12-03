@@ -21,7 +21,7 @@ export interface WindowGeometry {
   height: number;
 }
 
-export class ScreenshotCapture {
+export class WindowUtils {
   // Get window geometry by ID
   public async getWindowGeometry(windowId: string): Promise<WindowGeometry> {
     try {
@@ -140,3 +140,6 @@ export class ScreenshotCapture {
     }
   }
 }
+
+// Backward compatibility alias
+export { WindowUtils as ScreenshotCapture };

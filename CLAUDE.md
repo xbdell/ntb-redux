@@ -10,9 +10,8 @@ This is an LM-powered bot to control applications via imitation learning. The pr
 
 ### CLI Tools
 
-- `npm run collect` - Collect training data (screenshot-based, legacy)
-- `npm run collect-video` - Collect training data (video-based, recommended)
-- `npm run collect-video:60fps` - Collect at 60fps
+- `npm run collect` - Collect training data (video + input events)
+- `npm run collect:60fps` - Collect at 60fps
 - `npm run clean-data` - Clean and preprocess training data
 - `npm run train` - Train the TensorFlow.js model
 - `npm run agent-mode` - Run the trained agent to control the application
@@ -48,9 +47,10 @@ src/
 │   ├── tfjs-training-setup.ts    # TensorFlow.js training
 │   ├── target-app-agent.ts       # Application control agent
 │   ├── display-capture.ts        # FFmpeg screen recording
-│   ├── event-recorder.ts         # Keyboard/mouse event capture
-│   ├── screenshot-capture.ts     # Screenshot utilities
-│   ├── game-controller.ts        # Input controller
+│   ├── event-recorder.ts         # Keyboard/mouse event capture (evdev)
+│   ├── input-capture.ts          # Common input event types
+│   ├── window-utils.ts           # Window detection utilities (wmctrl/xwininfo)
+│   ├── game-controller.ts        # Input controller (xdotool)
 │   └── realtime-inference.ts     # Real-time model inference
 │
 ├── main/                    # Electron main process

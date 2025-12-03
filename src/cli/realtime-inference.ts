@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 import * as tf from '@tensorflow/tfjs-node-gpu';
-import { ScreenshotCapture } from './screenshot-capture.js';
+import { WindowUtils } from './window-utils.js';
 import { promises as fs } from 'fs';
 
 interface GameAction {
@@ -22,7 +22,7 @@ interface InferenceConfig {
 
 class RealTimeInference {
   private model: tf.LayersModel | null = null;
-  private screenshotCapture: ScreenshotCapture;
+  private windowUtils: WindowUtils;
   private targetWindowId: string | null = null;
   private config: InferenceConfig;
   private isRunning = false;
@@ -37,7 +37,7 @@ class RealTimeInference {
 
   constructor(config: InferenceConfig) {
     this.config = config;
-    this.screenshotCapture = new ScreenshotCapture();
+    this.windowUtils = new WindowUtils();
   }
 
   public async initialize(): Promise<void> {
@@ -74,7 +74,7 @@ class RealTimeInference {
   private async findTargetWindow(): Promise<void> {
     console.log(`🔍 Looking for target window: ${this.config.targetWindowTitle}`);
 
-    const windows = await this.screenshotCapture.getWindows();
+    const windows = await this.windowUtils.getWindows();
     const targetWindow = windows.find((w) =>
       w.title.toLowerCase().includes(this.config.targetWindowTitle.toLowerCase()),
     );
@@ -175,7 +175,7 @@ class RealTimeInference {
     if (!this.targetWindowId) throw new Error('Target window not found');
 
     // Capture screenshot as buffer
-    const imageBuffer = await this.screenshotCapture.captureWindowToBuffer(this.targetWindowId);
+    const imageBuffer = await this.windowUtils.captureWindowToBuffer(this.targetWindowId);
 
     // Convert to tensor
     let imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;

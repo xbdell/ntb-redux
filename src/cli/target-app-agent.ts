@@ -4,7 +4,7 @@ import type { InferenceConfig, GameAction } from './realtime-inference.js';
 import { RealTimeInference } from './realtime-inference.js';
 import type { ControllerConfig } from './game-controller.js';
 import { SafeGameController } from './game-controller.js';
-import { ScreenshotCapture } from './screenshot-capture.js';
+import { WindowUtils } from './window-utils.js';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
 import { join } from 'path';
@@ -119,8 +119,8 @@ class TargetAppAgent {
   }
 
   private async findTargetWindow(): Promise<void> {
-    const screenshotCapture = new ScreenshotCapture();
-    const windows = await screenshotCapture.getWindows();
+    const windowUtils = new WindowUtils();
+    const windows = await windowUtils.getWindows();
 
     const targetWindow = windows.find((w) =>
       w.title.toLowerCase().includes(this.config.targetWindowTitle.toLowerCase()),
