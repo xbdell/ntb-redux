@@ -177,6 +177,7 @@ class CleaningService {
       testSplit: config.testSplit,
       minInputEvents: config.minEventsPerFrame,
       maxMouseJump: config.maxMouseJump,
+      skipExistingFrames: true, // Default to skipping for GUI
     });
 
     try {

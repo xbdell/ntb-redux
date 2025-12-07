@@ -40,20 +40,21 @@ This will:
 
 ### Clean the data
 
-> **STATUS: UNDER DEVELOPMENT** - The data cleaning utility is being updated to work with the new video-based capture format. See [Development Roadmap](#development-roadmap-data-cleaning-update) below.
-
-Once you have the desired number of training data sets, we would want to clean those data sets and format them for our TensorFlow inference layer training.
+Once you have the desired number of training data sets, clean and format them for TensorFlow training.
 
 `npm run clean-data`
 
 Will clean data from `training_data` into `cleaned_data`.
 
 **What this step does:**
-1. Extracts frames from recorded video at the capture framerate
+1. Extracts frames from recorded video at the capture framerate (cached for reuse)
 2. Aligns input events (keyboard/mouse) to each frame by timestamp
-3. Converts raw events into training labels (movement vectors, aim position, actions)
-4. Splits data into train/validation/test sets
-5. Outputs in TensorFlow.js-compatible format
+3. Tracks keyboard state across frames (for held keys like WASD)
+4. Converts raw events into training labels (movement vectors, aim position, actions)
+5. Splits data into train/validation/test sets (70/20/10 by default)
+6. Outputs in TensorFlow.js-compatible format
+
+See [Data Cleaning Pipeline](#data-cleaning-pipeline) for detailed documentation.
 
 ### Train the model
 
@@ -281,48 +282,11 @@ The application uses a configuration file (`ntb-config.json`) to store user pref
 
 Paths can be relative (resolved from current working directory) or absolute.
 
-## Development Roadmap: Data Cleaning Update
+## Data Cleaning Pipeline
 
-The data cleaning utility (`src/cli/clean-training-data.ts`) is being updated to work with the new video-based data capture system.
+The data cleaning utility (`src/cli/clean-training-data.ts`) processes video-based training sessions into TensorFlow.js format.
 
-### Background
-
-The project transitioned from a screenshot-based capture system to a video-based one. The data cleaning utility still expects the old format and needs to be updated.
-
-| Component | Old Format | New Format |
-|-----------|------------|------------|
-| Visual data | Individual screenshots per frame | Continuous `video.mp4` |
-| Events | Pre-grouped per frame | Timestamped `events.jsonl` |
-| Metadata | `collection_metadata.json` with `dataPoints[]` | `metadata.json` with session info |
-
-### Implementation Phases
-
-#### Phase 1: Video Frame Extraction
-- Add FFmpeg-based frame extraction from `video.mp4`
-- Calculate frame timestamps based on recording framerate
-- Output frames as PNGs to session subdirectory
-
-#### Phase 2: Event-to-Frame Alignment
-- Parse JSONL event stream with timestamps
-- Assign events to frames using time windows
-- Track keyboard state across frame boundaries (for held keys)
-
-#### Phase 3: Data Structure Updates
-- Read new `metadata.json` format
-- Generate training data frames from extracted frames + aligned events
-- Update TypeScript interfaces
-
-#### Phase 4: Action Extraction Improvements
-- Fix mouse coordinate normalization
-- Implement proper key state tracking
-- Add relative mouse movement option (delta vs absolute)
-
-#### Phase 5: Output & Integration
-- Ensure output matches TensorFlow.js training expectations
-- Update `dataset_info.json` with extraction metadata
-- Verify GUI compatibility
-
-### Data Flow After Update
+### How It Works
 
 ```
 training_data/session_*/
@@ -332,8 +296,76 @@ training_data/session_*/
                                                          ├── val_data.json
                                                          ├── test_data.json
                                                          ├── screenshots/
-                                                         │   ├── frame_0.png
-                                                         │   ├── frame_1.png
+                                                         │   ├── frame_00000000.png
+                                                         │   ├── frame_00000001.png
                                                          │   └── ...
                                                          └── dataset_info.json
+```
+
+### Pipeline Steps
+
+1. **Frame Extraction** - Uses FFmpeg to extract PNG frames from `video.mp4` at the recording framerate. Frames are cached in `training_data/session_*/frames/` for reuse.
+
+2. **Event Parsing** - Streams `events.jsonl` and parses timestamped keyboard/mouse events.
+
+3. **Event-to-Frame Alignment** - Assigns events to frames based on time windows. Tracks keyboard state (held keys) and mouse state across frame boundaries.
+
+4. **Filtering** - Removes frames without activity and those with erratic mouse movements.
+
+5. **Action Extraction** - Converts frame state to training outputs:
+   - `movement_x/y`: WASD keys mapped to [-1, 1] normalized vector
+   - `aim_x/y`: Mouse position normalized to [0, 1] screen coordinates
+   - `shooting`: Left mouse button state (0 or 1)
+
+6. **Train/Val/Test Split** - Shuffles and splits data (default: 70% train, 20% val, 10% test).
+
+### CLI Options
+
+```bash
+npm run clean-data -- [options]
+
+Options:
+  --val-split <num>    Validation split ratio (default: 0.2)
+  --test-split <num>   Test split ratio (default: 0.1)
+  --min-events <num>   Minimum input events per frame (default: 0)
+  --max-jump <num>     Maximum mouse jump in pixels (default: 200)
+  --force-extract      Re-extract frames even if they exist
+  --help               Show help message
+```
+
+### Output Format
+
+The cleaner produces TensorFlow.js-compatible JSON files:
+
+**train_data.json / val_data.json / test_data.json:**
+```json
+{
+  "samples": [{
+    "screenshot": "screenshots/frame_00000000.png",
+    "outputs": {
+      "movement_x": 0.707,
+      "movement_y": -0.707,
+      "aim_x": 0.52,
+      "aim_y": 0.48,
+      "shooting": 1
+    },
+    "timestamp": 1234567890123
+  }]
+}
+```
+
+**dataset_info.json:**
+```json
+{
+  "format": "tensorflow_js",
+  "version": "2.0",
+  "splits": { "train": 1000, "validation": 200, "test": 100 },
+  "outputs": {
+    "movement_x": { "type": "continuous", "range": [-1, 1] },
+    "movement_y": { "type": "continuous", "range": [-1, 1] },
+    "aim_x": { "type": "continuous", "range": [0, 1] },
+    "aim_y": { "type": "continuous", "range": [0, 1] },
+    "shooting": { "type": "binary", "range": [0, 1] }
+  }
+}
 ```
