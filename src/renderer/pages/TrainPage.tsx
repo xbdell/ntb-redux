@@ -1,4 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import type { AppConfig } from '../../shared/types';
+
+declare global {
+  interface Window {
+    electronAPI: {
+      getConfig: () => Promise<AppConfig>;
+      selectDirectory: (title: string) => Promise<string | null>;
+    };
+  }
+}
 
 function TrainPage() {
   const [isTraining, setIsTraining] = useState(false);
@@ -6,14 +16,47 @@ function TrainPage() {
   const [epochHistory, setEpochHistory] = useState<
     Array<{ epoch: number; trainLoss: number; valLoss: number }>
   >([]);
+  const [loading, setLoading] = useState(true);
+
+  // Directory paths
+  const [dataDir, setDataDir] = useState('./cleaned_data');
+  const [modelDir, setModelDir] = useState('./models');
 
   // Configuration
   const [modelType, setModelType] = useState<'custom_cnn' | 'mobilenet' | 'efficientnet'>(
     'custom_cnn'
   );
+  const [modelName, setModelName] = useState('model');
   const [epochs, setEpochs] = useState(10);
   const [batchSize, setBatchSize] = useState(32);
   const [learningRate, setLearningRate] = useState(0.001);
+
+  // Load config on mount
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const config = await window.electronAPI.getConfig();
+        setDataDir(config.paths.cleanedData);
+        setModelDir(config.paths.models);
+        setModelType(config.training.defaultModelType);
+        setEpochs(config.training.defaultEpochs);
+        setBatchSize(config.training.defaultBatchSize);
+        setLearningRate(config.training.defaultLearningRate);
+      } catch (err) {
+        console.error('Failed to load config:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadConfig();
+  }, []);
+
+  const handleSelectDirectory = async (title: string, setter: (path: string) => void) => {
+    const selectedPath = await window.electronAPI.selectDirectory(title);
+    if (selectedPath) {
+      setter(selectedPath);
+    }
+  };
 
   const handleStartTraining = () => {
     setIsTraining(true);
@@ -46,6 +89,15 @@ function TrainPage() {
   };
 
   const bestValLoss = epochHistory.length > 0 ? Math.min(...epochHistory.map((e) => e.valLoss)) : 0;
+  const modelOutputPath = `${modelDir}/${modelName}`;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <span className="loading loading-spinner loading-lg"></span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -127,6 +179,81 @@ function TrainPage() {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Directory Selection */}
+              <div className="grid grid-cols-1 gap-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Training Data Directory</span>
+                  </label>
+                  <div className="join w-full">
+                    <input
+                      type="text"
+                      className="input input-bordered join-item flex-1"
+                      value={dataDir}
+                      onChange={(e) => setDataDir(e.target.value)}
+                      placeholder="Path to cleaned training data"
+                    />
+                    <button
+                      className="btn btn-secondary join-item"
+                      onClick={() =>
+                        handleSelectDirectory('Select Training Data Directory', setDataDir)
+                      }
+                    >
+                      Browse
+                    </button>
+                  </div>
+                  <label className="label">
+                    <span className="label-text-alt">Directory containing train_data.json</span>
+                  </label>
+                </div>
+
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Model Output Directory</span>
+                  </label>
+                  <div className="join w-full">
+                    <input
+                      type="text"
+                      className="input input-bordered join-item flex-1"
+                      value={modelDir}
+                      onChange={(e) => setModelDir(e.target.value)}
+                      placeholder="Path to save trained models"
+                    />
+                    <button
+                      className="btn btn-secondary join-item"
+                      onClick={() =>
+                        handleSelectDirectory('Select Model Output Directory', setModelDir)
+                      }
+                    >
+                      Browse
+                    </button>
+                  </div>
+                  <label className="label">
+                    <span className="label-text-alt">Base directory for model storage</span>
+                  </label>
+                </div>
+
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Model Name</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="input input-bordered w-full"
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                    placeholder="e.g., model_v1, experiment_lr001"
+                  />
+                  <label className="label">
+                    <span className="label-text-alt">
+                      Saved to: <code className="text-primary">{modelOutputPath}/</code>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="divider">Model Configuration</div>
+
               {/* Configuration Grid */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="form-control">
@@ -213,11 +340,22 @@ function TrainPage() {
           <h3 className="card-title text-lg mb-4">Model Output</h3>
           <div className="text-sm text-base-content/60">
             <p className="mb-2">Trained model will be saved to:</p>
-            <code>./models/model/</code>
+            <code className="text-primary">{modelOutputPath}/</code>
             <ul className="list-disc list-inside mt-2 space-y-1">
               <li>model.json - Architecture</li>
               <li>model.weights.bin - Weights</li>
             </ul>
+            <div className="mt-4 p-3 bg-base-300 rounded-lg">
+              <p className="text-xs">
+                <strong>Tip:</strong> Use different model names to save multiple training runs with
+                different hyperparameters. For example:
+              </p>
+              <ul className="list-disc list-inside mt-1 text-xs text-base-content/50">
+                <li>model_cnn_e10_lr001</li>
+                <li>model_mobilenet_e20</li>
+                <li>experiment_batch64</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
