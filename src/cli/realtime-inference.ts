@@ -18,12 +18,15 @@ interface InferenceConfig {
   smoothingFactor: number; // For action smoothing
   confidenceThreshold: number;
   debugMode: boolean;
+  /** Target screen resolution for aim denormalization (defaults to window size) */
+  screenResolution?: { width: number; height: number };
 }
 
 class RealTimeInference {
   private model: tf.LayersModel | null = null;
   private windowUtils: WindowUtils;
   private targetWindowId: string | null = null;
+  private targetWindowSize: { width: number; height: number } = { width: 1920, height: 1080 };
   private config: InferenceConfig;
   private isRunning = false;
   private lastAction: GameAction | null = null;
@@ -84,7 +87,18 @@ class RealTimeInference {
     }
 
     this.targetWindowId = targetWindow.id;
+
+    // Get window geometry for proper aim denormalization
+    if (this.config.screenResolution) {
+      this.targetWindowSize = this.config.screenResolution;
+    } else {
+      // Get actual window geometry
+      const geometry = await this.windowUtils.getWindowGeometry(targetWindow.id);
+      this.targetWindowSize = { width: geometry.width, height: geometry.height };
+    }
+
     console.log(`✅ Found target window: ${targetWindow.title} (ID: ${targetWindow.id})`);
+    console.log(`📐 Target resolution: ${this.targetWindowSize.width}x${this.targetWindowSize.height}`);
   }
 
   private warmUpModel(): void {
@@ -213,8 +227,9 @@ class RealTimeInference {
         y: predictionData[1] ?? 0, // -1 to 1
       },
       aim: {
-        x: (predictionData[2] ?? 0) * 320, // Denormalize to screen coordinates
-        y: (predictionData[3] ?? 0) * 240, // Denormalize to screen coordinates
+        // Denormalize to actual target window coordinates
+        x: (predictionData[2] ?? 0) * this.targetWindowSize.width,
+        y: (predictionData[3] ?? 0) * this.targetWindowSize.height,
       },
       shooting: (predictionData[4] ?? 0) > 0.5, // Threshold for shooting
       confidence: this.calculateConfidence(predictionData as Float32Array),
