@@ -62,7 +62,6 @@ export interface CleaningConfig {
   valSplit: number;
   testSplit: number;
   minEventsPerFrame: number;
-  maxMouseJump: number;
 }
 
 export interface TrainingConfig {
@@ -93,12 +92,21 @@ export interface CollectionStatus {
 }
 
 export interface CleaningProgress {
-  phase: 'scanning' | 'processing' | 'splitting' | 'complete';
+  phase: 'scanning' | 'extracting' | 'aligning' | 'filtering' | 'splitting' | 'complete';
   currentSession: string;
   processedSessions: number;
   totalSessions: number;
   framesKept: number;
   framesFiltered: number;
+  // Verbose output for monitoring
+  currentStep: string;
+  extractionProgress?: {
+    currentFrame: number;
+    totalFrames: number;
+    percentComplete: number;
+  };
+  eventCount?: number;
+  logs: string[];
 }
 
 export interface CleaningResult {

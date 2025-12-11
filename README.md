@@ -310,7 +310,7 @@ training_data/session_*/
 
 3. **Event-to-Frame Alignment** - Assigns events to frames based on time windows. Tracks keyboard state (held keys) and mouse state across frame boundaries.
 
-4. **Filtering** - Removes frames without activity and those with erratic mouse movements.
+4. **Filtering** - Removes frames without activity (no keyboard/mouse input).
 
 5. **Action Extraction** - Converts frame state to training outputs:
    - `movement_x/y`: WASD keys mapped to [-1, 1] normalized vector
@@ -328,7 +328,6 @@ Options:
   --val-split <num>    Validation split ratio (default: 0.2)
   --test-split <num>   Test split ratio (default: 0.1)
   --min-events <num>   Minimum input events per frame (default: 0)
-  --max-jump <num>     Maximum mouse jump in pixels (default: 200)
   --force-extract      Re-extract frames even if they exist
   --help               Show help message
 ```

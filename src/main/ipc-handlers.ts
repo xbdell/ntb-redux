@@ -167,18 +167,28 @@ class CleaningService {
       totalSessions: 0,
       framesKept: 0,
       framesFiltered: 0,
+      currentStep: 'Initializing...',
+      logs: [],
+    };
+
+    // Progress callback that updates internal state and sends to renderer
+    const onProgress = (progressInfo: CleaningProgress): void => {
+      this.progress = progressInfo;
+      sendToRenderer('cleaning:progress', progressInfo);
     };
 
     // Convert IPC config to cleaner config
-    this.cleaner = new TrainingDataCleaner({
-      inputDir: config.inputDir,
-      outputDir: config.outputDir,
-      validationSplit: config.valSplit,
-      testSplit: config.testSplit,
-      minInputEvents: config.minEventsPerFrame,
-      maxMouseJump: config.maxMouseJump,
-      skipExistingFrames: true, // Default to skipping for GUI
-    });
+    this.cleaner = new TrainingDataCleaner(
+      {
+        inputDir: config.inputDir,
+        outputDir: config.outputDir,
+        validationSplit: config.valSplit,
+        testSplit: config.testSplit,
+        minInputEvents: config.minEventsPerFrame,
+        skipExistingFrames: true, // Default to skipping for GUI
+      },
+      onProgress,
+    );
 
     try {
       // Run the cleaner
@@ -191,7 +201,9 @@ class CleaningService {
         testCount = 0;
 
       try {
-        const datasetInfo = JSON.parse(await fs.readFile(datasetInfoPath, 'utf8'));
+        const datasetInfo = JSON.parse(await fs.readFile(datasetInfoPath, 'utf8')) as {
+          splits?: { train?: number; validation?: number; test?: number };
+        };
         trainCount = datasetInfo.splits?.train || 0;
         valCount = datasetInfo.splits?.validation || 0;
         testCount = datasetInfo.splits?.test || 0;
@@ -203,8 +215,8 @@ class CleaningService {
         trainCount,
         valCount,
         testCount,
-        totalFrames: this.progress.framesKept + this.progress.framesFiltered,
-        filteredFrames: this.progress.framesFiltered,
+        totalFrames: this.progress?.framesKept ?? 0 + (this.progress?.framesFiltered ?? 0),
+        filteredFrames: this.progress?.framesFiltered ?? 0,
         outputDir: config.outputDir,
       };
 
@@ -449,7 +461,7 @@ async function getMonitors(): Promise<MonitorInfo[]> {
         // Try to get refresh rate from the mode line
         let refreshRate = 60;
         const rateMatch = line.match(/(\d+\.\d+)\s*\*/);
-        if (rateMatch) {
+        if (rateMatch && rateMatch[1]) {
           refreshRate = Math.round(parseFloat(rateMatch[1]));
         }
 

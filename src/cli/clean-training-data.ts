@@ -33,10 +33,29 @@ interface CleaningConfig {
   validationSplit: number;
   testSplit: number;
   minInputEvents: number;
-  maxMouseJump: number;
   /** Skip frame extraction if frames already exist */
   skipExistingFrames: boolean;
 }
+
+/** Progress callback for monitoring cleaning process */
+interface CleaningProgressInfo {
+  phase: 'scanning' | 'extracting' | 'aligning' | 'filtering' | 'splitting' | 'complete';
+  currentSession: string;
+  processedSessions: number;
+  totalSessions: number;
+  framesKept: number;
+  framesFiltered: number;
+  currentStep: string;
+  extractionProgress?: {
+    currentFrame: number;
+    totalFrames: number;
+    percentComplete: number;
+  };
+  eventCount?: number;
+  logs: string[];
+}
+
+type ProgressCallback = (progress: CleaningProgressInfo) => void;
 
 /** Session metadata from video-data-collector (metadata.json) */
 interface SessionMetadata {
@@ -123,23 +142,69 @@ interface TrainingSample {
 class TrainingDataCleaner {
   private config: CleaningConfig;
   private globalFrameCounter = 0;
+  private onProgress?: ProgressCallback;
+  private progress: CleaningProgressInfo;
+  private logBuffer: string[] = [];
+  private maxLogLines = 100;
 
-  constructor(config: CleaningConfig) {
+  constructor(config: CleaningConfig, onProgress?: ProgressCallback) {
     this.config = config;
+    this.onProgress = onProgress;
+    this.progress = {
+      phase: 'scanning',
+      currentSession: '',
+      processedSessions: 0,
+      totalSessions: 0,
+      framesKept: 0,
+      framesFiltered: 0,
+      currentStep: 'Initializing...',
+      logs: [],
+    };
+  }
+
+  private log(message: string): void {
+    const timestamp = new Date().toLocaleTimeString();
+    const logLine = `[${timestamp}] ${message}`;
+    console.log(message);
+
+    // Add to log buffer
+    this.logBuffer.push(logLine);
+    if (this.logBuffer.length > this.maxLogLines) {
+      this.logBuffer.shift();
+    }
+
+    // Update progress with logs
+    this.progress.logs = [...this.logBuffer];
+  }
+
+  private updateProgress(updates: Partial<CleaningProgressInfo>): void {
+    this.progress = { ...this.progress, ...updates, logs: this.logBuffer };
+    if (this.onProgress) {
+      this.onProgress(this.progress);
+    }
   }
 
   public async clean(): Promise<void> {
-    console.log('🧹 Starting training data cleaning process...');
-    console.log(`Input directory: ${this.config.inputDir}`);
-    console.log(`Output directory: ${this.config.outputDir}`);
+    this.log('🧹 Starting training data cleaning process...');
+    this.log(`Input directory: ${this.config.inputDir}`);
+    this.log(`Output directory: ${this.config.outputDir}`);
+
+    this.updateProgress({
+      phase: 'scanning',
+      currentStep: 'Scanning for video sessions...',
+    });
 
     // Find all video sessions
     const sessions = await this.findVideoSessions();
-    console.log(`Found ${sessions.length} video sessions\n`);
+    this.log(`Found ${sessions.length} video sessions`);
+
+    this.updateProgress({
+      totalSessions: sessions.length,
+    });
 
     if (sessions.length === 0) {
-      console.log('No sessions found. Make sure you have recorded sessions in the training_data directory.');
-      console.log('Each session should contain: metadata.json, video.mp4, events.jsonl');
+      this.log('No sessions found. Make sure you have recorded sessions in the training_data directory.');
+      this.log('Each session should contain: metadata.json, video.mp4, events.jsonl');
       return;
     }
 
@@ -151,11 +216,20 @@ class TrainingDataCleaner {
     let totalFrames = 0;
     let validFrames = 0;
 
-    for (const session of sessions) {
-      console.log(`\n📁 Processing session: ${basename(session.dir)}`);
-      console.log(`   Duration: ${session.metadata.duration.toFixed(1)}s`);
-      console.log(`   Framerate: ${session.metadata.video.recordingFramerate}fps`);
-      console.log(`   Events: ${session.metadata.events.count}`);
+    for (let i = 0; i < sessions.length; i++) {
+      const session = sessions[i]!;
+      const sessionName = basename(session.dir);
+
+      this.log(`\n📁 Processing session ${i + 1}/${sessions.length}: ${sessionName}`);
+      this.log(`   Duration: ${session.metadata.duration.toFixed(1)}s`);
+      this.log(`   Framerate: ${session.metadata.video.recordingFramerate}fps`);
+      this.log(`   Events: ${session.metadata.events.count}`);
+
+      this.updateProgress({
+        currentSession: sessionName,
+        processedSessions: i,
+        currentStep: `Processing session: ${sessionName}`,
+      });
 
       try {
         const { samples, rawCount, validCount } = await this.processSession(session);
@@ -163,36 +237,56 @@ class TrainingDataCleaner {
         totalFrames += rawCount;
         validFrames += validCount;
 
-        console.log(`   Extracted frames: ${rawCount}`);
-        console.log(`   Valid frames: ${validCount}`);
-        console.log(`   Filtered out: ${rawCount - validCount}`);
+        this.log(`   ✅ Extracted frames: ${rawCount}`);
+        this.log(`   ✅ Valid frames: ${validCount}`);
+        this.log(`   ✅ Filtered out: ${rawCount - validCount}`);
+
+        this.updateProgress({
+          framesKept: validFrames,
+          framesFiltered: totalFrames - validFrames,
+          processedSessions: i + 1,
+        });
       } catch (error) {
-        console.error(`   ❌ Error processing session: ${error}`);
+        this.log(`   ❌ Error processing session: ${error}`);
       }
     }
 
     if (allSamples.length === 0) {
-      console.log('\n❌ No valid samples generated. Check your session data.');
+      this.log('\n❌ No valid samples generated. Check your session data.');
       return;
     }
 
-    console.log('\n📊 Overall Statistics:');
-    console.log(`  Total frames processed: ${totalFrames}`);
-    console.log(`  Valid frames kept: ${validFrames}`);
-    console.log(`  Filter rate: ${((1 - validFrames / totalFrames) * 100).toFixed(1)}%`);
+    this.log('\n📊 Overall Statistics:');
+    this.log(`  Total frames processed: ${totalFrames}`);
+    this.log(`  Valid frames kept: ${validFrames}`);
+    this.log(`  Filter rate: ${((1 - validFrames / totalFrames) * 100).toFixed(1)}%`);
 
     // Split data into train/val/test sets
+    this.updateProgress({
+      phase: 'splitting',
+      currentStep: 'Splitting data into train/val/test sets...',
+    });
+
     const splits = this.splitData(allSamples);
 
-    console.log('\n📂 Data splits:');
-    console.log(`  Training: ${splits.train.length} samples`);
-    console.log(`  Validation: ${splits.val.length} samples`);
-    console.log(`  Test: ${splits.test.length} samples`);
+    this.log('\n📂 Data splits:');
+    this.log(`  Training: ${splits.train.length} samples`);
+    this.log(`  Validation: ${splits.val.length} samples`);
+    this.log(`  Test: ${splits.test.length} samples`);
 
     // Export data in TensorFlow.js format
+    this.updateProgress({
+      currentStep: 'Exporting TensorFlow.js datasets...',
+    });
+
     await this.exportForTensorFlow(splits);
 
-    console.log('\n✅ Training data cleaning completed successfully!');
+    this.log('\n✅ Training data cleaning completed successfully!');
+
+    this.updateProgress({
+      phase: 'complete',
+      currentStep: 'Complete!',
+    });
   }
 
   /**
@@ -231,21 +325,22 @@ class TrainingDataCleaner {
               videoPath,
               eventsPath,
             });
+
+            this.log(`  ✓ Found valid session: ${entry.name}`);
           } catch {
             // Try legacy format (collection_metadata.json)
             const legacyPath = join(sessionDir, 'collection_metadata.json');
             try {
               await fs.access(legacyPath);
-              console.log(`  ⚠️  Skipping ${entry.name}: legacy format not supported`);
-              console.log(`      Please re-record using the new video-based collector`);
+              this.log(`  ⚠️  Skipping ${entry.name}: legacy format not supported`);
             } catch {
-              console.log(`  ⚠️  Skipping ${entry.name}: missing required files`);
+              this.log(`  ⚠️  Skipping ${entry.name}: missing required files`);
             }
           }
         }
       }
     } catch (error) {
-      console.error('Error reading input directory:', error);
+      this.log(`Error reading input directory: ${error}`);
     }
 
     return sessions;
@@ -281,10 +376,25 @@ class TrainingDataCleaner {
     const framesExist = await this.checkFramesExist(framesDir);
 
     if (framesExist && this.config.skipExistingFrames) {
-      console.log('   Using existing extracted frames...');
+      this.log('   Using existing extracted frames...');
+      this.updateProgress({
+        phase: 'extracting',
+        currentStep: 'Loading cached frames...',
+      });
       extractionResult = await this.loadExistingFrames(framesDir, session.metadata);
+      this.log(`   Loaded ${extractionResult.frameCount} cached frames`);
     } else {
-      console.log('   Extracting frames from video...');
+      this.log('   Extracting frames from video...');
+      this.updateProgress({
+        phase: 'extracting',
+        currentStep: 'Extracting frames from video...',
+        extractionProgress: {
+          currentFrame: 0,
+          totalFrames: Math.floor(session.metadata.duration * session.metadata.video.recordingFramerate),
+          percentComplete: 0,
+        },
+      });
+
       extractionResult = await extractFrames(
         {
           videoPath: session.videoPath,
@@ -293,33 +403,69 @@ class TrainingDataCleaner {
           sessionStartTime: session.metadata.timestamp,
         },
         (progress) => {
-          if (progress.currentFrame % 100 === 0) {
-            process.stdout.write(`\r   Progress: ${progress.percentComplete}% (${progress.currentFrame} frames)`);
+          // Update progress every 50 frames or every percent
+          if (progress.currentFrame % 50 === 0 || progress.percentComplete % 5 === 0) {
+            this.updateProgress({
+              extractionProgress: {
+                currentFrame: progress.currentFrame,
+                totalFrames: progress.totalFrames || 0,
+                percentComplete: progress.percentComplete,
+              },
+              currentStep: `Extracting frames: ${progress.percentComplete}% (${progress.currentFrame}/${progress.totalFrames || '?'})`,
+            });
           }
         },
       );
-      console.log(''); // New line after progress
+      this.log(`   Extracted ${extractionResult.frameCount} frames in ${(extractionResult.extractionTimeMs / 1000).toFixed(1)}s`);
     }
 
     // Step 2: Parse events from JSONL
-    console.log('   Parsing events...');
+    this.log('   Parsing events...');
+    this.updateProgress({
+      phase: 'aligning',
+      currentStep: 'Parsing event log...',
+      extractionProgress: undefined,
+    });
+
     const events = await this.parseEvents(session.eventsPath);
+    this.log(`   Loaded ${events.length} events`);
+
+    this.updateProgress({
+      eventCount: events.length,
+    });
 
     // Step 3: Align events to frames
-    console.log('   Aligning events to frames...');
+    this.log('   Aligning events to frames...');
+    this.updateProgress({
+      currentStep: 'Aligning events to frames...',
+    });
+
     const processedFrames = this.alignEventsToFrames(
       extractionResult.frames,
       events,
       extractionResult.framerate,
       session.metadata.timestamp,
     );
+    this.log(`   Aligned events across ${processedFrames.length} frames`);
 
     // Step 4: Filter frames
+    this.log('   Filtering frames...');
+    this.updateProgress({
+      phase: 'filtering',
+      currentStep: 'Filtering frames by activity...',
+    });
+
     const validFrames = this.filterFrames(processedFrames);
+    this.log(`   Kept ${validFrames.length}/${processedFrames.length} frames after filtering`);
 
     // Step 5: Copy valid frames to output and create samples
-    console.log('   Creating training samples...');
+    this.log('   Creating training samples...');
+    this.updateProgress({
+      currentStep: 'Copying frames and creating samples...',
+    });
+
     const samples = await this.createSamples(validFrames, session.metadata);
+    this.log(`   Created ${samples.length} training samples`);
 
     return {
       samples,
@@ -489,7 +635,7 @@ class TrainingDataCleaner {
    * Filter frames based on quality criteria
    */
   private filterFrames(frames: ProcessedFrame[]): ProcessedFrame[] {
-    return frames.filter((frame, index) => {
+    return frames.filter((frame) => {
       // Check minimum events (including carried-over state)
       const hasActivity =
         frame.events.length >= this.config.minInputEvents ||
@@ -499,17 +645,6 @@ class TrainingDataCleaner {
 
       if (!hasActivity) {
         return false;
-      }
-
-      // Check for erratic mouse movements
-      if (index > 0) {
-        const prevFrame = frames[index - 1]!;
-        const dx = Math.abs(frame.mouseState.x - prevFrame.mouseState.x);
-        const dy = Math.abs(frame.mouseState.y - prevFrame.mouseState.y);
-
-        if (dx > this.config.maxMouseJump || dy > this.config.maxMouseJump) {
-          return false;
-        }
       }
 
       return true;
@@ -534,7 +669,7 @@ class TrainingDataCleaner {
       try {
         await fs.copyFile(frame.screenshotPath, destPath);
       } catch (error) {
-        console.warn(`   Failed to copy frame: ${frame.screenshotPath}`);
+        this.log(`   Warning: Failed to copy frame: ${frame.screenshotPath}`);
         continue;
       }
 
@@ -622,7 +757,7 @@ class TrainingDataCleaner {
     val: TrainingSample[];
     test: TrainingSample[];
   }): Promise<void> {
-    console.log('\n🔄 Creating TensorFlow.js datasets...');
+    this.log('\n🔄 Creating TensorFlow.js datasets...');
 
     // Save dataset info
     const datasetInfo = {
@@ -638,7 +773,6 @@ class TrainingDataCleaner {
         validationSplit: this.config.validationSplit,
         testSplit: this.config.testSplit,
         minInputEvents: this.config.minInputEvents,
-        maxMouseJump: this.config.maxMouseJump,
       },
       outputs: {
         movement_x: { type: 'continuous', range: [-1, 1], description: 'Horizontal movement (A/D)' },
@@ -653,10 +787,11 @@ class TrainingDataCleaner {
       join(this.config.outputDir, 'dataset_info.json'),
       JSON.stringify(datasetInfo, null, 2),
     );
+    this.log('  ✓ Saved dataset_info.json');
 
     // Save each split
     for (const [name, data] of Object.entries(splits)) {
-      console.log(`  Creating ${name} dataset (${data.length} samples)...`);
+      this.log(`  Creating ${name} dataset (${data.length} samples)...`);
 
       const dataset = { samples: data };
 
@@ -664,6 +799,7 @@ class TrainingDataCleaner {
         join(this.config.outputDir, `${name}_data.json`),
         JSON.stringify(dataset, null, 2),
       );
+      this.log(`  ✓ Saved ${name}_data.json`);
     }
   }
 }
@@ -697,7 +833,6 @@ async function main(): Promise<void> {
     validationSplit: 0.2,
     testSplit: 0.1,
     minInputEvents: 0, // Allow frames with just keyboard state
-    maxMouseJump: 200,
     skipExistingFrames: true,
   };
 
@@ -713,9 +848,6 @@ async function main(): Promise<void> {
       case '--min-events':
         config.minInputEvents = parseInt(args[++i] ?? '0');
         break;
-      case '--max-jump':
-        config.maxMouseJump = parseInt(args[++i] ?? '200');
-        break;
       case '--force-extract':
         config.skipExistingFrames = false;
         break;
@@ -730,7 +862,6 @@ async function main(): Promise<void> {
         console.log('  --val-split <num>    Validation split ratio (default: 0.2)');
         console.log('  --test-split <num>   Test split ratio (default: 0.1)');
         console.log('  --min-events <num>   Minimum input events per frame (default: 0)');
-        console.log('  --max-jump <num>     Maximum mouse jump in pixels (default: 200)');
         console.log('  --force-extract      Re-extract frames even if they exist');
         console.log('  --help               Show this help message');
         process.exit(0);
@@ -744,7 +875,6 @@ async function main(): Promise<void> {
   console.log(`  Test split: ${(config.testSplit * 100).toFixed(1)}%`);
   console.log(`  Training split: ${((1 - config.validationSplit - config.testSplit) * 100).toFixed(1)}%`);
   console.log(`  Min input events: ${config.minInputEvents}`);
-  console.log(`  Max mouse jump: ${config.maxMouseJump}px`);
   console.log(`  Skip existing frames: ${config.skipExistingFrames}`);
   console.log('');
 
@@ -762,4 +892,4 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   void main();
 }
 
-export { TrainingDataCleaner, CleaningConfig };
+export { TrainingDataCleaner, type CleaningConfig, type CleaningProgressInfo };
