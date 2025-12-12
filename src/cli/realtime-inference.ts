@@ -185,6 +185,26 @@ class RealTimeInference {
     this.isRunning = false;
   }
 
+  /**
+   * Capture current screen and run a single prediction.
+   * Used by TargetAppAgent for on-demand inference.
+   */
+  public async predictOnce(): Promise<GameAction> {
+    if (!this.model) throw new Error('Model not loaded');
+    if (!this.targetWindowId) throw new Error('Target window not found');
+
+    const screenshot = await this.captureTargetScreen();
+    const action = await this.predict(screenshot);
+    return this.smoothAction(action);
+  }
+
+  /**
+   * Get the target window ID (for controller to use)
+   */
+  public getTargetWindowId(): string | null {
+    return this.targetWindowId;
+  }
+
   private async captureTargetScreen(): Promise<tf.Tensor3D> {
     if (!this.targetWindowId) throw new Error('Target window not found');
 

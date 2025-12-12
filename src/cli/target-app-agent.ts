@@ -4,7 +4,6 @@ import type { InferenceConfig, GameAction } from './realtime-inference.js';
 import { RealTimeInference } from './realtime-inference.js';
 import type { ControllerConfig } from './game-controller.js';
 import { SafeGameController } from './game-controller.js';
-import { WindowUtils } from './window-utils.js';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
 import { join } from 'path';
@@ -119,21 +118,14 @@ class TargetAppAgent {
   }
 
   private async findTargetWindow(): Promise<void> {
-    const windowUtils = new WindowUtils();
-    const windows = await windowUtils.getWindows();
+    // Get the window ID from the inference engine (which already found it)
+    this.targetWindowId = this.inference.getTargetWindowId();
 
-    const targetWindow = windows.find((w) =>
-      w.title.toLowerCase().includes(this.config.targetWindowTitle.toLowerCase()),
-    );
-
-    if (!targetWindow) {
+    if (!this.targetWindowId) {
       throw new Error(
         `Target window not found: ${this.config.targetWindowTitle}\nMake sure the target application is running!`,
       );
     }
-
-    this.targetWindowId = targetWindow.id;
-    console.log(`✅ Found target window: ${targetWindow.title}`);
   }
 
   public async start(): Promise<void> {
@@ -159,16 +151,21 @@ class TargetAppAgent {
 
       try {
         // Get action from inference engine
-        const action = this.getNextAction();
+        const action = await this.getNextAction();
+
+        if (!action) {
+          // Skip this frame if prediction failed
+          continue;
+        }
 
         // Execute action if controller is enabled
-        if (this.config.enableController && action) {
+        if (this.config.enableController && this.targetWindowId) {
           await this.controller.executeAction(action, this.targetWindowId);
           this.actionCount++;
         }
 
         // Log debug info
-        if (this.config.debug.enabled && action) {
+        if (this.config.debug.enabled) {
           this.logAIState(action, Date.now() - loopStartTime);
         }
 
@@ -197,26 +194,15 @@ class TargetAppAgent {
     console.log('🛑 Target App Agent stopped');
   }
 
-  private getNextAction(): GameAction | null {
-    // This is a simplified version - in the full implementation,
-    // we'd integrate more closely with the inference engine
-
-    // For now, return a mock action to test the system
-    // In the real implementation, this would be replaced with:
-    // return await this.inference.predictNextAction();
-
-    return {
-      movement: {
-        x: Math.random() * 0.4 - 0.2, // Small random movement
-        y: Math.random() * 0.4 - 0.2,
-      },
-      aim: {
-        x: 160 + Math.random() * 40 - 20, // Center-ish aiming
-        y: 120 + Math.random() * 40 - 20,
-      },
-      shooting: Math.random() > 0.7, // Occasional shooting
-      confidence: 0.8,
-    };
+  private async getNextAction(): Promise<GameAction | null> {
+    try {
+      // Get real prediction from inference engine
+      const action = await this.inference.predictOnce();
+      return action;
+    } catch (error) {
+      console.error('❌ Prediction failed:', error instanceof Error ? error.message : String(error));
+      return null;
+    }
   }
 
   public async stop(): Promise<void> {

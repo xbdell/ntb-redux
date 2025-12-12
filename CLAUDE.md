@@ -126,83 +126,53 @@ CLI tools use config values as defaults but allow command-line overrides.
 - Always keep README.md and CLAUDE.md up to date, include a step to update them if needed in every todo list
 - If a multiphase plan is accepted, save the plan in both README.md and CLAUDE.md
 
-## Current Development: Data Cleaning Utility Update
+## Completed Development
 
-The data cleaning utility (`clean-training-data.ts`) needs to be updated to work with the new video-based data capture paradigm.
+### Data Cleaning Utility ✅ COMPLETE
 
-### Problem Statement
+The data cleaning utility (`clean-training-data.ts`) has been updated to work with the video-based data capture paradigm:
 
-**Old Screenshot Paradigm (what cleaner expects):**
-- `collection_metadata.json` with `dataPoints` array containing per-frame data
-- Pre-existing `screenshotFile` paths for each frame
-- Input events already grouped per-frame
+- FFmpeg frame extraction from `video.mp4`
+- Event-to-frame alignment with keyboard/mouse state tracking
+- Mouse coordinates normalized to [0,1] range
+- TensorFlow.js-compatible output format
 
-**New Video-Based Capture (what collector produces):**
-- `metadata.json` - session-level metadata (different structure)
-- `video.mp4` - continuous video recording at 30/60fps
-- `events.jsonl` - timestamped keyboard/mouse events (JSONL format)
+### GUI Enhancements ✅ COMPLETE
 
-**Critical Gap:** No frame extraction step exists - video frames need to be extracted and aligned with events.
+**Train Model Page:**
+- Directory selection for training data and model output
+- Model naming support (save to `models/<model_name>/`)
+- Real-time epoch progress with train/val loss display
+- Model architecture, epochs, batch size, learning rate configuration
 
-### Implementation Plan
+**Play/Run Agent Page:**
+- Model selection with directory browser
+- Target window configuration
+- Inference settings (FPS, smoothing, confidence threshold)
+- Safe mode toggle (predictions only vs. actual input control)
+- Real-time inference stats display
 
-#### Phase 1: Video Frame Extraction ✅ COMPLETE
-- [x] Add FFmpeg frame extraction from `video.mp4` at the recording framerate
-- [x] Calculate frame timestamps: `startTime + (frameIndex / fps) * 1000`
-- [x] Output frames as PNGs to `frames/` subdirectory within session
-- [x] Handle extraction errors gracefully
+### Training Architecture ✅ COMPLETE
 
-**Implementation:** `src/cli/frame-extractor.ts` - New module providing:
-- `extractFrames()` - Extracts frames using FFmpeg with progress callback
-- `getVideoMetadata()` - Gets video duration, frame count, resolution via ffprobe
-- `getFrameTimeWindow()` - Calculates time window for each frame
-- `calculateFrameTimestamp()` / `timestampToFrameIndex()` - Timestamp utilities
+**Problem:** TensorFlow.js GPU bindings (`@tensorflow/tfjs-node-gpu`) conflict with Electron's native module loading, causing SIGTRAP errors when training via the GUI.
 
-#### Phase 2: Event-to-Frame Alignment ✅ COMPLETE
-- [x] Parse `events.jsonl` - load all events with timestamps
-- [x] Assign events to frames using time windows: Frame N covers `[frameTimestamp, frameTimestamp + frameDuration)`
-- [x] Handle edge cases: events before first frame, after last frame
-- [x] Maintain keyboard state across frame boundaries (key held down spans multiple frames)
+**Solution:** Training is spawned as a separate child process:
+- `TrainingService` in `ipc-handlers.ts` spawns `npm run train` with `--json-output` flag
+- Training CLI outputs progress as JSON lines to stdout
+- Main process parses JSON and forwards epoch events to renderer
+- Avoids GPU library conflicts while maintaining real-time progress updates
 
-**Implementation:** `src/cli/clean-training-data.ts` - Updated cleaner with:
-- `parseEvents()` - Streams JSONL file and parses events
-- `alignEventsToFrames()` - Assigns events to frames, tracks keyboard/mouse state
-- `ProcessedFrame` type with `keyboardState: Set<string>` and `mouseState` object
+**Key files:**
+- `src/cli/tfjs-training-setup.ts` - Added `--json-output` flag and `outputJson()` function
+- `src/main/ipc-handlers.ts` - `TrainingService` uses `spawn()` + `readline` for IPC
 
-#### Phase 3: Update Data Structures ✅ COMPLETE
-- [x] Read new `metadata.json` format instead of `collection_metadata.json`
-- [x] Generate `TrainingDataFrame` objects from extracted frames + aligned events
-- [x] Update `CollectionMetadata` interface to match new format
-- [x] Add `SessionMetadata` type from video-data-collector
+### Inference Integration ✅ COMPLETE
 
-**Implementation:** New types in `clean-training-data.ts`:
-- `SessionMetadata` - Matches video-data-collector output
-- `RawEvent` - Event from events.jsonl
-- `ProcessedFrame` - Frame with aligned events and state
-- `VideoSession` - Session ready for processing
-
-#### Phase 4: Improve Action Extraction ✅ COMPLETE
-- [x] Fix mouse coordinate handling - normalize to [0,1] range based on screen resolution
-- [x] Implement proper key state tracking across frame boundaries
-- [x] Mouse coordinates now normalized (was absolute, caused out-of-bounds predictions)
-- [x] Removed old TODO comments, replaced with working implementation
-
-**Implementation:** `extractActions()` method now:
-- Uses `keyboardState` Set for accurate WASD tracking
-- Normalizes mouse position to [0,1] using display resolution from metadata
-- Tracks left/right mouse button state properly
-
-#### Phase 5: Output Format & Integration ✅ COMPLETE
-- [x] Update screenshot paths to point to extracted frame PNGs
-- [x] Ensure output matches what `tfjs-training-setup.ts` expects
-- [x] Add frame extraction parameters to `dataset_info.json`
-- [x] Updated IPC handlers for GUI compatibility
-
-**Implementation:**
-- Frames copied to `cleaned_data/screenshots/` with global unique names
-- `dataset_info.json` includes version 2.0, output descriptions, and ranges
-- New CLI option `--force-extract` to re-extract frames
-- `skipExistingFrames` config for caching extracted frames
+**Real-time inference:**
+- `RealTimeInference.predictOnce()` - On-demand single prediction
+- `RealTimeInference.getTargetWindowId()` - Window ID for controller
+- Proper aim coordinate denormalization using actual window geometry
+- `TargetAppAgent` uses real model inference instead of mock data
 
 ### Data Format Reference
 

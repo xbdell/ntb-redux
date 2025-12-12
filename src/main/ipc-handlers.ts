@@ -17,12 +17,12 @@ import type {
 import { loadConfig, saveConfig, getResolvedPaths } from '../shared/config.js';
 import { VideoDataCollector } from '../cli/video-data-collector.js';
 import { TrainingDataCleaner } from '../cli/clean-training-data.js';
-import { TensorFlowTrainer } from '../cli/tfjs-training-setup.js';
 import { TargetAppAgent } from '../cli/target-app-agent.js';
-import { exec } from 'child_process';
+import { exec, spawn, type ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { createInterface } from 'readline';
 
 // App config (loaded at startup)
 let appConfig: AppConfig = loadConfig();
@@ -239,11 +239,11 @@ class CleaningService {
 }
 
 // ============================================================================
-// Training Service - wraps TensorFlowTrainer
+// Training Service - spawns training as a child process to avoid GPU conflicts
 // ============================================================================
 
 class TrainingService {
-  private trainer: TensorFlowTrainer | null = null;
+  private trainingProcess: ChildProcess | null = null;
   private status: TrainingStatus = {
     isTraining: false,
     currentEpoch: 0,
@@ -251,7 +251,6 @@ class TrainingService {
     bestValLoss: Infinity,
     modelPath: null,
   };
-  private abortController: AbortController | null = null;
 
   async start(config: TrainingConfig): Promise<void> {
     if (this.status.isTraining) {
@@ -266,40 +265,118 @@ class TrainingService {
       modelPath: null,
     };
 
-    this.abortController = new AbortController();
+    return new Promise((resolve, reject) => {
+      // Spawn the training CLI as a separate process
+      // This avoids GPU library conflicts with Electron
+      const args = [
+        config.dataDir,
+        '--model',
+        config.modelType,
+        '--epochs',
+        String(config.epochs),
+        '--batch-size',
+        String(config.batchSize),
+        '--learning-rate',
+        String(config.learningRate),
+        '--save-path',
+        config.outputDir,
+        '--json-output',
+      ];
 
-    // Convert IPC config to trainer config
-    this.trainer = new TensorFlowTrainer({
-      dataDir: config.dataDir,
-      modelType: config.modelType,
-      epochs: config.epochs,
-      batchSize: config.batchSize,
-      learningRate: config.learningRate,
-      validationSplit: 0.2, // Default
-      savePath: join(config.outputDir, 'model'),
+      console.log('🚀 Spawning training process:', 'npm', ['run', 'train', '--', ...args].join(' '));
+
+      this.trainingProcess = spawn('npm', ['run', 'train', '--', ...args], {
+        cwd: process.cwd(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: true,
+      });
+
+      // Parse JSON output from the training process
+      const rl = createInterface({
+        input: this.trainingProcess.stdout!,
+        crlfDelay: Infinity,
+      });
+
+      rl.on('line', (line: string) => {
+        // Try to parse as JSON
+        try {
+          const data = JSON.parse(line) as Record<string, unknown>;
+
+          switch (data['type']) {
+            case 'epoch': {
+              const epoch = data['epoch'] as number;
+              const totalEpochs = data['totalEpochs'] as number;
+              const trainLoss = data['trainLoss'] as number;
+              const valLoss = data['valLoss'] as number;
+
+              this.status.currentEpoch = epoch;
+              if (valLoss < this.status.bestValLoss) {
+                this.status.bestValLoss = valLoss;
+              }
+
+              sendToRenderer('training:epoch', {
+                epoch,
+                totalEpochs,
+                trainLoss,
+                valLoss,
+                learningRate: config.learningRate,
+                timeMs: 0,
+              });
+              break;
+            }
+            case 'complete': {
+              const modelPath = data['modelPath'] as string;
+              this.status.modelPath = modelPath;
+              this.status.isTraining = false;
+              sendToRenderer('training:complete', modelPath);
+              resolve();
+              break;
+            }
+            case 'error': {
+              const message = data['message'] as string;
+              this.status.isTraining = false;
+              reject(new Error(message));
+              break;
+            }
+            case 'start':
+              console.log('📊 Training started with config:', data['config']);
+              break;
+          }
+        } catch {
+          // Not JSON, log as regular output
+          console.log('[train]', line);
+        }
+      });
+
+      // Handle stderr
+      this.trainingProcess.stderr?.on('data', (data: Buffer) => {
+        console.error('[train:err]', data.toString());
+      });
+
+      // Handle process exit
+      this.trainingProcess.on('close', (code: number | null) => {
+        console.log(`Training process exited with code ${code}`);
+        this.status.isTraining = false;
+        this.trainingProcess = null;
+
+        if (code !== 0 && this.status.modelPath === null) {
+          reject(new Error(`Training process exited with code ${code}`));
+        }
+      });
+
+      this.trainingProcess.on('error', (error: Error) => {
+        console.error('Training process error:', error);
+        this.status.isTraining = false;
+        this.trainingProcess = null;
+        reject(error);
+      });
     });
-
-    try {
-      await this.trainer.initialize();
-      await this.trainer.train();
-
-      // Training completed
-      this.status.modelPath = join(config.outputDir, 'model');
-      sendToRenderer('training:complete', this.status.modelPath);
-    } catch (error) {
-      console.error('Training failed:', error);
-      throw error;
-    } finally {
-      this.status.isTraining = false;
-      this.trainer?.dispose();
-      this.trainer = null;
-      this.abortController = null;
-    }
   }
 
   async stop(): Promise<void> {
-    if (this.abortController) {
-      this.abortController.abort();
+    if (this.trainingProcess) {
+      this.trainingProcess.kill('SIGTERM');
+      this.trainingProcess = null;
     }
     this.status.isTraining = false;
   }
@@ -556,6 +633,8 @@ async function checkDependencies(): Promise<{ [key: string]: boolean }> {
 export function registerIpcHandlers(ipcMain: IpcMain): void {
   // Config handlers
   ipcMain.handle('config:get', async () => {
+    // Always load fresh from disk to pick up any changes
+    appConfig = loadConfig();
     return appConfig;
   });
 

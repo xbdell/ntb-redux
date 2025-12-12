@@ -60,9 +60,32 @@ See [Data Cleaning Pipeline](#data-cleaning-pipeline) for detailed documentation
 
 Once we have the `cleaned_data` created we will want to finally train our model and save the trained weights.
 
-`npm run train`
+`npm run train` or `npm run train:default`
 
-looks in `cleaned_data` and uses that info for training our tensorflow inference model, which it will then save in `models/model`
+Looks in `cleaned_data` (configurable) and uses that info for training our TensorFlow.js model, which it will then save in `models/model`.
+
+- `npm run train` - Base command, uses defaults from `ntb-config.json`
+- `npm run train:default` - Quick start with sensible defaults (custom_cnn, 10 epochs)
+
+**Options:**
+```bash
+npm run train -- [data-dir] [options]
+
+Options:
+  --model <type>          Model type: custom_cnn, mobilenet, efficientnet (default: from config)
+  --epochs <num>          Number of epochs (default: from config)
+  --batch-size <num>      Batch size (default: from config)
+  --learning-rate <num>   Learning rate (default: from config)
+  --save-path <path>      Model save path (default: ./models/model)
+  --json-output           Output progress as JSON lines (for IPC)
+```
+
+**Via the GUI:**
+The Train Model page allows you to:
+- Select training data directory
+- Specify model output directory and model name (e.g., `models/experiment_v1`)
+- Configure model type, epochs, batch size, and learning rate
+- View real-time epoch progress with train/val loss
 
 ### Run the trained agent
 
@@ -71,6 +94,14 @@ We finally have a happy trained agent, time to allow it to control the applicati
 `npm run agent-mode`
 
 will find the target window (configured in settings), starts grabbing screenshots of it, and then passes them into our trained tensorflow model (loaded from `models/model`).
+
+**Via the GUI:**
+The Play/Run Agent page allows you to:
+- Select which trained model to use (browse to any model directory)
+- Configure target window name
+- Adjust inference settings (FPS, smoothing factor, confidence threshold)
+- Toggle between safe mode (predictions only) and controller mode (sends actual inputs)
+- View real-time inference stats and current predicted actions
 
 ## Electron GUI
 
@@ -197,9 +228,16 @@ The Electron app uses a secure IPC (Inter-Process Communication) architecture wi
 │      │              │                │                │            │     │
 │      ▼              ▼                ▼                ▼            │     │
 │ ┌──────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐    │     │
-│ │VideoData │ │TrainingData  │ │ TensorFlow   │ │ TargetApp    │    │     │
-│ │Collector │ │   Cleaner    │ │   Trainer    │ │   Agent      │    │     │
+│ │VideoData │ │TrainingData  │ │   Child      │ │ TargetApp    │    │     │
+│ │Collector │ │   Cleaner    │ │  Process*    │ │   Agent      │    │     │
 │ └──────────┘ └──────────────┘ └──────────────┘ └──────────────┘    │     │
+│                                     │                                    │
+│                              ┌──────┴──────┐                             │
+│                              │ TensorFlow  │  * Spawned as separate      │
+│                              │   Trainer   │    process to avoid GPU     │
+│                              │  (npm run   │    conflicts with Electron  │
+│                              │   train)    │                             │
+│                              └─────────────┘                             │
 │                                                                          │
 └──────────────────────────────────────────────────────────────────────────┘
 ```

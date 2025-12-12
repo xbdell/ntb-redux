@@ -1,8 +1,8 @@
 {
   "paths": {
     "trainingData": "/media/namesd/s1/NTB-DATA",
-    "cleanedData": "./cleaned_data",
-    "models": "./models"
+    "cleanedData": "/media/namesd/s1/NTB-CLEANED",
+    "models": "/media/namesd/s1/NTB-MODELS"
   },
   "collection": {
     "defaultFps": 30,
@@ -12,7 +12,7 @@
   "training": {
     "defaultModelType": "custom_cnn",
     "defaultEpochs": 10,
-    "defaultBatchSize": 32,
+    "defaultBatchSize": 8,
     "defaultLearningRate": 0.001
   },
   "inference": {

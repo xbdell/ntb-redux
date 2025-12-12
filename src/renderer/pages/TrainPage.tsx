@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
-import type { AppConfig } from '../../shared/types';
+import type { AppConfig, TrainingConfig, EpochMetrics, TrainingStatus } from '../../shared/types';
 
 declare global {
   interface Window {
     electronAPI: {
       getConfig: () => Promise<AppConfig>;
       selectDirectory: (title: string) => Promise<string | null>;
+      startTraining: (config: TrainingConfig) => Promise<void>;
+      stopTraining: () => Promise<void>;
+      getTrainingStatus: () => Promise<TrainingStatus>;
+      onTrainingEpoch: (callback: (metrics: EpochMetrics) => void) => () => void;
+      onTrainingComplete: (callback: (modelPath: string) => void) => () => void;
     };
   }
 }
@@ -17,6 +22,8 @@ function TrainPage() {
     Array<{ epoch: number; trainLoss: number; valLoss: number }>
   >([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [completedModelPath, setCompletedModelPath] = useState<string | null>(null);
 
   // Directory paths
   const [dataDir, setDataDir] = useState('./cleaned_data');
@@ -51,6 +58,31 @@ function TrainPage() {
     loadConfig();
   }, []);
 
+  // Listen for training events
+  useEffect(() => {
+    const unsubscribeEpoch = window.electronAPI.onTrainingEpoch((metrics: EpochMetrics) => {
+      setCurrentEpoch(metrics.epoch);
+      setEpochHistory((prev) => [
+        ...prev,
+        {
+          epoch: metrics.epoch,
+          trainLoss: metrics.trainLoss,
+          valLoss: metrics.valLoss,
+        },
+      ]);
+    });
+
+    const unsubscribeComplete = window.electronAPI.onTrainingComplete((modelPath: string) => {
+      setIsTraining(false);
+      setCompletedModelPath(modelPath);
+    });
+
+    return () => {
+      unsubscribeEpoch();
+      unsubscribeComplete();
+    };
+  }, []);
+
   const handleSelectDirectory = async (title: string, setter: (path: string) => void) => {
     const selectedPath = await window.electronAPI.selectDirectory(title);
     if (selectedPath) {
@@ -58,38 +90,42 @@ function TrainPage() {
     }
   };
 
-  const handleStartTraining = () => {
+  const handleStartTraining = async () => {
     setIsTraining(true);
     setCurrentEpoch(0);
     setEpochHistory([]);
-    // TODO: Implement actual training via IPC
-    // Simulate epochs for now
-    let epoch = 0;
-    const interval = setInterval(() => {
-      epoch++;
-      setCurrentEpoch(epoch);
-      setEpochHistory((prev) => [
-        ...prev,
-        {
-          epoch,
-          trainLoss: Math.random() * 0.5 + 0.1 * (epochs - epoch),
-          valLoss: Math.random() * 0.5 + 0.15 * (epochs - epoch),
-        },
-      ]);
-      if (epoch >= epochs) {
-        clearInterval(interval);
-        setIsTraining(false);
-      }
-    }, 1000);
+    setError(null);
+    setCompletedModelPath(null);
+
+    const config: TrainingConfig = {
+      dataDir,
+      modelType,
+      epochs,
+      batchSize,
+      learningRate,
+      outputDir: modelOutputPath,
+    };
+
+    try {
+      await window.electronAPI.startTraining(config);
+    } catch (err) {
+      console.error('Training failed:', err);
+      setError(err instanceof Error ? err.message : String(err));
+      setIsTraining(false);
+    }
   };
 
-  const handleStopTraining = () => {
+  const handleStopTraining = async () => {
+    try {
+      await window.electronAPI.stopTraining();
+    } catch (err) {
+      console.error('Failed to stop training:', err);
+    }
     setIsTraining(false);
-    // TODO: Implement training stop via IPC
   };
 
-  const bestValLoss = epochHistory.length > 0 ? Math.min(...epochHistory.map((e) => e.valLoss)) : 0;
   const modelOutputPath = `${modelDir}/${modelName}`;
+  const bestValLoss = epochHistory.length > 0 ? Math.min(...epochHistory.map((e) => e.valLoss)) : 0;
 
   if (loading) {
     return (
@@ -323,7 +359,25 @@ function TrainPage() {
                 Start Training
               </button>
 
-              {epochHistory.length > 0 && (
+              {error && (
+                <div className="alert alert-error">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {completedModelPath && (
+                <div className="alert alert-success">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Training complete! Model saved to: <code>{completedModelPath}</code></span>
+                </div>
+              )}
+
+              {epochHistory.length > 0 && !completedModelPath && (
                 <div className="text-sm text-base-content/60">
                   Last training - Best validation loss:{' '}
                   <span className="text-success font-medium">{bestValLoss.toFixed(4)}</span>
