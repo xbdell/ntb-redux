@@ -6,6 +6,8 @@ LM powered bot to control applications via imitation learning. Currently in a ve
 
 This is a second attempt at a project I started around 7 years ago. I had the basic idea for this project and even got around to creating the data collection portion [os-input-capture](https://github.com/github-bdem/os-input-capture) before life derailed my progess. Fast forward to now, and with all the advances in the LM landscape and tooling, I figured it would be a good time to try out the project again. This time I decided to also try out my new Anthropic subscription and see just how useful claude-code is when writing a project from the ground up.
 
+### NOTE: Seems Nvidia wanted to something similar: https://huggingface.co/datasets/nvidia/NitroGen
+
 ## OS Dependencies
 
 Currently only tested on Ubuntu 24 LTS. The following command will make sure all os level packages are installed.
@@ -47,6 +49,7 @@ Once you have the desired number of training data sets, clean and format them fo
 Will clean data from `training_data` into `cleaned_data`.
 
 **What this step does:**
+
 1. Extracts frames from recorded video at the capture framerate (cached for reuse)
 2. Aligns input events (keyboard/mouse) to each frame by timestamp
 3. Tracks keyboard state across frames (for held keys like WASD)
@@ -68,6 +71,7 @@ Looks in `cleaned_data` (configurable) and uses that info for training our Tenso
 - `npm run train:default` - Quick start with sensible defaults (custom_cnn, 10 epochs)
 
 **Options:**
+
 ```bash
 npm run train -- [data-dir] [options]
 
@@ -82,6 +86,7 @@ Options:
 
 **Via the GUI:**
 The Train Model page allows you to:
+
 - Select training data directory
 - Specify model output directory and model name (e.g., `models/experiment_v1`)
 - Configure model type, epochs, batch size, and learning rate
@@ -97,6 +102,7 @@ will find the target window (configured in settings), starts grabbing screenshot
 
 **Via the GUI:**
 The Play/Run Agent page allows you to:
+
 - Select which trained model to use (browse to any model directory)
 - Configure target window name
 - Adjust inference settings (FPS, smoothing factor, confidence threshold)
@@ -110,16 +116,19 @@ In addition to the CLI tools, there is an Electron-based GUI that provides a uni
 ### Running the GUI
 
 **Development mode:**
+
 ```bash
 npm run electron:dev
 ```
 
 **Production preview:**
+
 ```bash
 npm run electron:preview
 ```
 
 **Package for distribution:**
+
 ```bash
 npm run electron:package
 ```
@@ -244,31 +253,31 @@ The Electron app uses a secure IPC (Inter-Process Communication) architecture wi
 
 ### IPC Channels
 
-| Channel | Direction | Description |
-|---------|-----------|-------------|
-| `system:get-monitors` | Request | Get list of connected monitors |
-| `system:get-sessions` | Request | Get list of recorded sessions |
-| `system:check-dependencies` | Request | Check if OS dependencies are installed |
-| `collection:start` | Request | Start video + input recording |
-| `collection:stop` | Request | Stop recording, return session info |
-| `collection:get-status` | Request | Get current recording status |
-| `collection:event-count` | Event | Real-time event count updates |
-| `collection:stopped` | Event | Notification when recording stops |
-| `cleaning:start` | Request | Start data cleaning/preprocessing |
-| `cleaning:get-progress` | Request | Get cleaning progress |
-| `cleaning:progress` | Event | Real-time cleaning progress updates |
-| `training:start` | Request | Start model training |
-| `training:stop` | Request | Stop training |
-| `training:get-status` | Request | Get training status |
-| `training:epoch` | Event | Epoch completion metrics |
-| `training:complete` | Event | Training completed notification |
-| `inference:start` | Request | Start AI agent |
-| `inference:stop` | Request | Stop AI agent |
-| `inference:get-status` | Request | Get inference status |
-| `inference:stats` | Event | Real-time FPS and latency stats |
-| `config:get` | Request | Get application configuration |
-| `config:set` | Request | Save application configuration |
-| `config:select-directory` | Request | Open directory picker dialog |
+| Channel                     | Direction | Description                            |
+| --------------------------- | --------- | -------------------------------------- |
+| `system:get-monitors`       | Request   | Get list of connected monitors         |
+| `system:get-sessions`       | Request   | Get list of recorded sessions          |
+| `system:check-dependencies` | Request   | Check if OS dependencies are installed |
+| `collection:start`          | Request   | Start video + input recording          |
+| `collection:stop`           | Request   | Stop recording, return session info    |
+| `collection:get-status`     | Request   | Get current recording status           |
+| `collection:event-count`    | Event     | Real-time event count updates          |
+| `collection:stopped`        | Event     | Notification when recording stops      |
+| `cleaning:start`            | Request   | Start data cleaning/preprocessing      |
+| `cleaning:get-progress`     | Request   | Get cleaning progress                  |
+| `cleaning:progress`         | Event     | Real-time cleaning progress updates    |
+| `training:start`            | Request   | Start model training                   |
+| `training:stop`             | Request   | Stop training                          |
+| `training:get-status`       | Request   | Get training status                    |
+| `training:epoch`            | Event     | Epoch completion metrics               |
+| `training:complete`         | Event     | Training completed notification        |
+| `inference:start`           | Request   | Start AI agent                         |
+| `inference:stop`            | Request   | Stop AI agent                          |
+| `inference:get-status`      | Request   | Get inference status                   |
+| `inference:stats`           | Event     | Real-time FPS and latency stats        |
+| `config:get`                | Request   | Get application configuration          |
+| `config:set`                | Request   | Save application configuration         |
+| `config:select-directory`   | Request   | Open directory picker dialog           |
 
 ## Configuration
 
@@ -303,20 +312,20 @@ The application uses a configuration file (`ntb-config.json`) to store user pref
 
 ### Configuration Options
 
-| Section | Option | Description | Default |
-|---------|--------|-------------|---------|
-| paths | trainingData | Directory for raw recorded sessions | `./training_data` |
-| paths | cleanedData | Directory for preprocessed data | `./cleaned_data` |
-| paths | models | Directory for trained models | `./models` |
-| collection | defaultFps | Default recording frame rate | `30` |
-| collection | defaultMonitor | Which monitor to record | `leftmost` |
-| collection | targetWindowName | Target window name (empty = full monitor) | `` |
-| training | defaultModelType | Default model architecture | `custom_cnn` |
-| training | defaultEpochs | Default training epochs | `10` |
-| training | defaultBatchSize | Default batch size | `32` |
-| training | defaultLearningRate | Default learning rate | `0.001` |
-| inference | defaultFps | Default inference FPS | `30` |
-| inference | defaultSmoothingFactor | Action smoothing (0-1) | `0.3` |
+| Section    | Option                 | Description                               | Default           |
+| ---------- | ---------------------- | ----------------------------------------- | ----------------- |
+| paths      | trainingData           | Directory for raw recorded sessions       | `./training_data` |
+| paths      | cleanedData            | Directory for preprocessed data           | `./cleaned_data`  |
+| paths      | models                 | Directory for trained models              | `./models`        |
+| collection | defaultFps             | Default recording frame rate              | `30`              |
+| collection | defaultMonitor         | Which monitor to record                   | `leftmost`        |
+| collection | targetWindowName       | Target window name (empty = full monitor) | ``                |
+| training   | defaultModelType       | Default model architecture                | `custom_cnn`      |
+| training   | defaultEpochs          | Default training epochs                   | `10`              |
+| training   | defaultBatchSize       | Default batch size                        | `32`              |
+| training   | defaultLearningRate    | Default learning rate                     | `0.001`           |
+| inference  | defaultFps             | Default inference FPS                     | `30`              |
+| inference  | defaultSmoothingFactor | Action smoothing (0-1)                    | `0.3`             |
 
 Paths can be relative (resolved from current working directory) or absolute.
 
@@ -375,23 +384,27 @@ Options:
 The cleaner produces TensorFlow.js-compatible JSON files:
 
 **train_data.json / val_data.json / test_data.json:**
+
 ```json
 {
-  "samples": [{
-    "screenshot": "screenshots/frame_00000000.png",
-    "outputs": {
-      "movement_x": 0.707,
-      "movement_y": -0.707,
-      "aim_x": 0.52,
-      "aim_y": 0.48,
-      "shooting": 1
-    },
-    "timestamp": 1234567890123
-  }]
+  "samples": [
+    {
+      "screenshot": "screenshots/frame_00000000.png",
+      "outputs": {
+        "movement_x": 0.707,
+        "movement_y": -0.707,
+        "aim_x": 0.52,
+        "aim_y": 0.48,
+        "shooting": 1
+      },
+      "timestamp": 1234567890123
+    }
+  ]
 }
 ```
 
 **dataset_info.json:**
+
 ```json
 {
   "format": "tensorflow_js",
