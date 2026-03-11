@@ -1,0 +1,22 @@
+{
+  "paths": {
+    "trainingData": "/media/namesd/s1/NTB-DATA",
+    "cleanedData": "/media/namesd/s1/NTB-CLEANED",
+    "models": "/media/namesd/s1/NTB-MODELS"
+  },
+  "collection": {
+    "defaultFps": 30,
+    "defaultMonitor": "leftmost",
+    "targetWindowName": ""
+  },
+  "training": {
+    "defaultModelType": "custom_cnn",
+    "defaultEpochs": 10,
+    "defaultBatchSize": 8,
+    "defaultLearningRate": 0.001
+  },
+  "inference": {
+    "defaultFps": 30,
+    "defaultSmoothingFactor": 0.3
+  }
+}

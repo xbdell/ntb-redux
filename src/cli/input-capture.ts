@@ -1,6 +1,6 @@
-//TODO: Move this to one of the other files and export it from there
-
-// import { createReadStream } from 'fs';
+/**
+ * Common input event types used across the application
+ */
 export interface InputEvent {
   timestamp: number;
   type: 'keyboard' | 'mouse';

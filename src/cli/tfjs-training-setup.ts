@@ -5,6 +5,7 @@ import * as tf from '@tensorflow/tfjs-node-gpu'; // For GPU support
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import * as path from 'path';
+import { loadConfig, getResolvedPaths } from '../shared/config.js';
 
 interface TrainingConfig {
   dataDir: string;
@@ -15,6 +16,8 @@ interface TrainingConfig {
   validationSplit: number;
   savePath: string;
   resumeFrom?: string;
+  /** Callback fired at the end of each epoch */
+  onEpochEnd?: (epoch: number, totalEpochs: number, trainLoss: number, valLoss: number) => void;
 }
 
 interface DatasetSample {
@@ -32,8 +35,10 @@ interface DatasetSample {
 class TensorFlowTrainer {
   private config: TrainingConfig;
   private model: tf.LayersModel | null = null;
-  private trainDataset: tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> | null = null;
-  private valDataset: tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> | null = null;
+  private trainDataset: tf.data.Dataset<tf.TensorContainer> | null = null;
+  private valDataset: tf.data.Dataset<tf.TensorContainer> | null = null;
+  private trainSampleCount = 0;
+  private valSampleCount = 0;
 
   constructor(config: TrainingConfig) {
     this.config = config;
@@ -61,19 +66,29 @@ class TensorFlowTrainer {
   private async loadDatasets(): Promise<void> {
     console.log('📁 Loading datasets...');
 
+    console.log('  [1/4] Loading dataset info...');
     await this.loadDatasetInfo(); // Load to verify it exists
     const baseDir = this.config.dataDir;
 
     // Load training data
+    console.log('  [2/4] Loading train_data.json...');
     const trainData = await this.loadDatasetFile(join(baseDir, 'train_data.json'));
+    console.log('  [3/4] Loading val_data.json...');
     const valData = await this.loadDatasetFile(join(baseDir, 'val_data.json'));
 
-    console.log(`  Training samples: ${trainData.samples.length}`);
-    console.log(`  Validation samples: ${valData.samples.length}`);
+    this.trainSampleCount = trainData.samples.length;
+    this.valSampleCount = valData.samples.length;
+    const trainBatches = Math.ceil(this.trainSampleCount / this.config.batchSize);
+    const valBatches = Math.ceil(this.valSampleCount / this.config.batchSize);
+
+    console.log(`  Training samples: ${this.trainSampleCount} (${trainBatches} batches)`);
+    console.log(`  Validation samples: ${this.valSampleCount} (${valBatches} batches)`);
 
     // Create TensorFlow datasets
+    console.log('  [4/4] Creating TensorFlow datasets...');
     this.trainDataset = this.createTFDataset(trainData.samples, baseDir, true);
     this.valDataset = this.createTFDataset(valData.samples, baseDir, false);
+    console.log('  ✅ Datasets created');
   }
 
   private async loadDatasetInfo(): Promise<{
@@ -105,7 +120,7 @@ class TensorFlowTrainer {
     samples: DatasetSample[],
     baseDir: string,
     isTraining: boolean,
-  ): tf.data.Dataset<{ xs: tf.Tensor; ys: tf.Tensor }> {
+  ): tf.data.Dataset<tf.TensorContainer> {
     // Create dataset from generator
     const dataset = tf.data.generator(async function* () {
       for (const sample of samples) {
@@ -114,14 +129,14 @@ class TensorFlowTrainer {
           const imagePath = path.join(baseDir, sample.screenshot);
           const imageBuffer = await fs.readFile(imagePath);
 
-          // Decode image using TensorFlow.js
-          let imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
+          // Decode image using TensorFlow.js - use tf.tidy to prevent memory leaks
+          const decoded = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
+          const resized = tf.image.resizeBilinear(decoded, [240, 320]);
+          const normalized = tf.div(resized, 255.0) as tf.Tensor3D;
 
-          // Resize to model input size
-          imageTensor = tf.image.resizeBilinear(imageTensor, [240, 320]);
-
-          // Normalize to [0, 1]
-          imageTensor = tf.div(imageTensor, 255.0);
+          // Dispose intermediate tensors to prevent memory leak
+          decoded.dispose();
+          resized.dispose();
 
           // Create target tensor with default values for undefined
           const target = tf.tensor1d([
@@ -132,7 +147,7 @@ class TensorFlowTrainer {
             sample.outputs.shooting ?? 0,
           ]);
 
-          yield { xs: imageTensor, ys: target };
+          yield { xs: normalized, ys: target };
         } catch (error) {
           console.warn(`Failed to load sample: ${sample.screenshot}`, error);
           continue;
@@ -141,13 +156,14 @@ class TensorFlowTrainer {
     });
 
     // Apply batching and shuffling
+    // Note: shuffle buffer size affects memory - keep it small to avoid OOM
     let processedDataset = dataset;
 
     if (isTraining) {
-      processedDataset = processedDataset.shuffle(1000);
+      processedDataset = processedDataset.shuffle(100); // Reduced from 1000 to prevent OOM
     }
 
-    return processedDataset.batch(this.config.batchSize);
+    return processedDataset.batch(this.config.batchSize).prefetch(2);
   }
 
   private createModel(): tf.LayersModel {
@@ -336,22 +352,75 @@ class TensorFlowTrainer {
     const getBestValLoss = (): number => this.getBestValLoss();
     const saveModel = (epoch: number, valLoss: number): Promise<void> =>
       this.saveModel(epoch, valLoss);
+    const totalEpochs = this.config.epochs;
+    const onEpochEndCallback = this.config.onEpochEnd;
+    let batchCount = 0;
+    let lastBatchLogTime = Date.now();
+    let lastProgressPercent = 0;
+    const expectedBatches = Math.ceil(this.trainSampleCount / this.config.batchSize);
+    const BATCH_LOG_INTERVAL_MS = 5000; // Log every 5 seconds
+    const PROGRESS_INTERVAL = 5; // Log every 5%
     const callbacks = [
       new (class extends tf.Callback {
+        public override async onTrainBegin(): Promise<void> {
+          console.log(`🏋️ Training started at ${new Date().toISOString()}`);
+          console.log(`  Expected batches per epoch: ${expectedBatches}`);
+          console.log(`  Memory: ${JSON.stringify(tf.memory())}`);
+        }
+        public override async onEpochBegin(epoch: number): Promise<void> {
+          batchCount = 0;
+          lastBatchLogTime = Date.now();
+          lastProgressPercent = 0;
+          console.log(`\n📈 Epoch ${epoch + 1}/${totalEpochs} started...`);
+        }
+        public override async onBatchEnd(_batch: number, logs?: tf.Logs): Promise<void> {
+          batchCount++;
+          const now = Date.now();
+          const progressPercent = Math.floor((batchCount / expectedBatches) * 100);
+
+          // Log at every 5% milestone
+          if (progressPercent >= lastProgressPercent + PROGRESS_INTERVAL) {
+            lastProgressPercent = Math.floor(progressPercent / PROGRESS_INTERVAL) * PROGRESS_INTERVAL;
+            const loss = logs?.['loss'] ?? 0;
+            const mem = tf.memory();
+            console.log(
+              `  [${lastProgressPercent}%] Batch ${batchCount}/${expectedBatches}, ` +
+              `loss=${typeof loss === 'number' ? loss.toFixed(4) : loss}, ` +
+              `tensors=${mem.numTensors}, bytes=${(mem.numBytes / 1024 / 1024).toFixed(1)}MB`
+            );
+            lastBatchLogTime = now;
+          }
+          // Also log every 5 seconds as a fallback heartbeat
+          else if (now - lastBatchLogTime >= BATCH_LOG_INTERVAL_MS) {
+            const loss = logs?.['loss'] ?? 0;
+            console.log(
+              `  [heartbeat] Batch ${batchCount}/${expectedBatches}, ` +
+              `loss=${typeof loss === 'number' ? loss.toFixed(4) : loss}`
+            );
+            lastBatchLogTime = now;
+          }
+        }
         public override async onEpochEnd(epoch: number, logs?: tf.Logs): Promise<void> {
-          const loss = logs?.['loss'];
-          const valLoss = logs?.['val_loss'];
+          const loss = logs?.['loss'] ?? 0;
+          const valLoss = logs?.['val_loss'] ?? 0;
           console.log(
-            `Epoch ${epoch + 1}: loss=${loss?.toFixed(4)}, val_loss=${valLoss?.toFixed(4)}`,
+            `✅ Epoch ${epoch + 1}/${totalEpochs} complete: loss=${loss.toFixed(4)}, val_loss=${valLoss.toFixed(4)}, batches=${batchCount}`,
           );
+          console.log(`  Memory: ${JSON.stringify(tf.memory())}`);
+
+          // Fire external callback if provided
+          if (onEpochEndCallback) {
+            onEpochEndCallback(epoch + 1, totalEpochs, loss, valLoss);
+          }
 
           // Save model checkpoint
           if (valLoss !== undefined && (epoch === 0 || valLoss < getBestValLoss())) {
             await saveModel(epoch, valLoss);
           }
         }
-        public override onTrainEnd(): void {
-          console.log('✅ Training completed!');
+        public override async onTrainEnd(): Promise<void> {
+          console.log('\n🎉 Training completed!');
+          console.log(`  Final memory: ${JSON.stringify(tf.memory())}`);
         }
       })(),
     ];
@@ -456,40 +525,40 @@ class TensorFlowTrainer {
   }
 }
 
+/** Output a JSON line for IPC communication with parent process */
+function outputJson(type: string, data: Record<string, unknown>): void {
+  console.log(JSON.stringify({ type, ...data }));
+}
+
 // CLI interface
 async function main(): Promise<void> {
+  // Load app configuration
+  const appConfig = loadConfig();
+  const resolvedPaths = getResolvedPaths(appConfig);
+
   const args = process.argv.slice(2);
 
-  if (args.length < 1) {
-    console.log('Usage: ts-node tfjs-training-setup.ts <data-dir> [options]');
-    console.log('');
-    console.log('Options:');
-    console.log(
-      '  --model <type>          Model type: custom_cnn, mobilenet, efficientnet (default: custom_cnn)',
-    );
-    console.log('  --epochs <num>          Number of epochs (default: 50)');
-    console.log('  --batch-size <num>      Batch size (default: 16)');
-    console.log('  --learning-rate <num>   Learning rate (default: 0.001)');
-    console.log('  --save-path <path>      Model save path (default: ./model)');
-    console.log('  --resume <path>         Resume from saved model');
-    console.log('');
-    console.log('Example:');
-    console.log('  ts-node tfjs-training-setup.ts ./cleaned_data --model mobilenet --epochs 30');
-    process.exit(1);
+  // Use config paths as defaults
+  let dataDir = resolvedPaths.cleanedData;
+  let jsonOutput = false;
+
+  // If positional arg provided, use it
+  if (args.length >= 1 && !args[0]?.startsWith('--')) {
+    dataDir = args[0] ?? dataDir;
   }
 
   const config: TrainingConfig = {
-    dataDir: args[0] || '',
-    modelType: 'custom_cnn',
-    epochs: 50,
-    batchSize: 16,
-    learningRate: 0.001,
+    dataDir,
+    modelType: appConfig.training.defaultModelType,
+    epochs: appConfig.training.defaultEpochs,
+    batchSize: appConfig.training.defaultBatchSize,
+    learningRate: appConfig.training.defaultLearningRate,
     validationSplit: 0.2,
-    savePath: './models/model',
+    savePath: join(resolvedPaths.models, 'model'),
   };
 
   // Parse options
-  for (let i = 1; i < args.length; i++) {
+  for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--model':
         config.modelType = args[++i] as 'efficientnet' | 'mobilenet' | 'custom_cnn';
@@ -509,10 +578,41 @@ async function main(): Promise<void> {
       case '--resume':
         config.resumeFrom = args[++i];
         break;
+      case '--json-output':
+        jsonOutput = true;
+        break;
+      case '--help':
+        console.log('Usage: ts-node tfjs-training-setup.ts [data-dir] [options]');
+        console.log('');
+        console.log('Data directory defaults to cleanedData path from ntb-config.json.');
+        console.log('');
+        console.log('Options:');
+        console.log(
+          '  --model <type>          Model type: custom_cnn, mobilenet, efficientnet (default: custom_cnn)',
+        );
+        console.log('  --epochs <num>          Number of epochs (default: 50)');
+        console.log('  --batch-size <num>      Batch size (default: 16)');
+        console.log('  --learning-rate <num>   Learning rate (default: 0.001)');
+        console.log('  --save-path <path>      Model save path (default: ./models/model)');
+        console.log('  --resume <path>         Resume from saved model');
+        console.log('  --json-output           Output progress as JSON lines (for IPC)');
+        console.log('  --help                  Show this help message');
+        console.log('');
+        console.log('Example:');
+        console.log('  ts-node tfjs-training-setup.ts --model mobilenet --epochs 30');
+        process.exit(0);
     }
   }
 
-  console.log('📋 Training configuration:', config);
+  // Set up epoch callback for JSON output mode
+  if (jsonOutput) {
+    config.onEpochEnd = (epoch, totalEpochs, trainLoss, valLoss) => {
+      outputJson('epoch', { epoch, totalEpochs, trainLoss, valLoss });
+    };
+    outputJson('start', { config: { ...config, onEpochEnd: undefined } });
+  } else {
+    console.log('📋 Training configuration:', config);
+  }
 
   try {
     const trainer = new TensorFlowTrainer(config);
@@ -525,8 +625,16 @@ async function main(): Promise<void> {
     await trainer.train();
 
     trainer.dispose();
+
+    if (jsonOutput) {
+      outputJson('complete', { modelPath: config.savePath });
+    }
   } catch (error) {
-    console.error('❌ Training failed:', error);
+    if (jsonOutput) {
+      outputJson('error', { message: error instanceof Error ? error.message : String(error) });
+    } else {
+      console.error('❌ Training failed:', error);
+    }
     process.exit(1);
   }
 }

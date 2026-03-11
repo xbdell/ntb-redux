@@ -1,0 +1,420 @@
+import { useState, useEffect } from 'react';
+import type { AppConfig, TrainingConfig, EpochMetrics, TrainingStatus } from '../../shared/types';
+
+declare global {
+  interface Window {
+    electronAPI: {
+      getConfig: () => Promise<AppConfig>;
+      selectDirectory: (title: string) => Promise<string | null>;
+      startTraining: (config: TrainingConfig) => Promise<void>;
+      stopTraining: () => Promise<void>;
+      getTrainingStatus: () => Promise<TrainingStatus>;
+      onTrainingEpoch: (callback: (metrics: EpochMetrics) => void) => () => void;
+      onTrainingComplete: (callback: (modelPath: string) => void) => () => void;
+    };
+  }
+}
+
+function TrainPage() {
+  const [isTraining, setIsTraining] = useState(false);
+  const [currentEpoch, setCurrentEpoch] = useState(0);
+  const [epochHistory, setEpochHistory] = useState<
+    Array<{ epoch: number; trainLoss: number; valLoss: number }>
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [completedModelPath, setCompletedModelPath] = useState<string | null>(null);
+
+  // Directory paths
+  const [dataDir, setDataDir] = useState('./cleaned_data');
+  const [modelDir, setModelDir] = useState('./models');
+
+  // Configuration
+  const [modelType, setModelType] = useState<'custom_cnn' | 'mobilenet' | 'efficientnet'>(
+    'custom_cnn'
+  );
+  const [modelName, setModelName] = useState('model');
+  const [epochs, setEpochs] = useState(10);
+  const [batchSize, setBatchSize] = useState(32);
+  const [learningRate, setLearningRate] = useState(0.001);
+
+  // Load config on mount
+  useEffect(() => {
+    async function loadConfig() {
+      try {
+        const config = await window.electronAPI.getConfig();
+        setDataDir(config.paths.cleanedData);
+        setModelDir(config.paths.models);
+        setModelType(config.training.defaultModelType);
+        setEpochs(config.training.defaultEpochs);
+        setBatchSize(config.training.defaultBatchSize);
+        setLearningRate(config.training.defaultLearningRate);
+      } catch (err) {
+        console.error('Failed to load config:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadConfig();
+  }, []);
+
+  // Listen for training events
+  useEffect(() => {
+    const unsubscribeEpoch = window.electronAPI.onTrainingEpoch((metrics: EpochMetrics) => {
+      setCurrentEpoch(metrics.epoch);
+      setEpochHistory((prev) => [
+        ...prev,
+        {
+          epoch: metrics.epoch,
+          trainLoss: metrics.trainLoss,
+          valLoss: metrics.valLoss,
+        },
+      ]);
+    });
+
+    const unsubscribeComplete = window.electronAPI.onTrainingComplete((modelPath: string) => {
+      setIsTraining(false);
+      setCompletedModelPath(modelPath);
+    });
+
+    return () => {
+      unsubscribeEpoch();
+      unsubscribeComplete();
+    };
+  }, []);
+
+  const handleSelectDirectory = async (title: string, setter: (path: string) => void) => {
+    const selectedPath = await window.electronAPI.selectDirectory(title);
+    if (selectedPath) {
+      setter(selectedPath);
+    }
+  };
+
+  const handleStartTraining = async () => {
+    setIsTraining(true);
+    setCurrentEpoch(0);
+    setEpochHistory([]);
+    setError(null);
+    setCompletedModelPath(null);
+
+    const config: TrainingConfig = {
+      dataDir,
+      modelType,
+      epochs,
+      batchSize,
+      learningRate,
+      outputDir: modelOutputPath,
+    };
+
+    try {
+      await window.electronAPI.startTraining(config);
+    } catch (err) {
+      console.error('Training failed:', err);
+      setError(err instanceof Error ? err.message : String(err));
+      setIsTraining(false);
+    }
+  };
+
+  const handleStopTraining = async () => {
+    try {
+      await window.electronAPI.stopTraining();
+    } catch (err) {
+      console.error('Failed to stop training:', err);
+    }
+    setIsTraining(false);
+  };
+
+  const modelOutputPath = `${modelDir}/${modelName}`;
+  const bestValLoss = epochHistory.length > 0 ? Math.min(...epochHistory.map((e) => e.valLoss)) : 0;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <span className="loading loading-spinner loading-lg"></span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div>
+        <h2 className="text-2xl font-semibold mb-1">Train Model</h2>
+        <p className="text-base-content/60">Train a neural network on your cleaned data</p>
+      </div>
+
+      {/* Training Status Card */}
+      <div className="card bg-base-200">
+        <div className="card-body">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="card-title text-lg">Training Status</h3>
+            <div className={`badge ${isTraining ? 'badge-warning' : 'badge-ghost'} gap-2`}>
+              <span
+                className={`w-2 h-2 rounded-full ${isTraining ? 'bg-warning animate-pulse-opacity' : 'bg-base-content/40'}`}
+              ></span>
+              {isTraining ? 'Training' : 'Idle'}
+            </div>
+          </div>
+
+          {isTraining ? (
+            <div className="space-y-4">
+              {/* Stats */}
+              <div className="stats bg-base-300 w-full">
+                <div className="stat">
+                  <div className="stat-title">Epoch</div>
+                  <div className="stat-value text-primary">
+                    {currentEpoch}/{epochs}
+                  </div>
+                </div>
+                <div className="stat">
+                  <div className="stat-title">Train Loss</div>
+                  <div className="stat-value text-lg">
+                    {epochHistory.length > 0
+                      ? epochHistory[epochHistory.length - 1].trainLoss.toFixed(4)
+                      : '-'}
+                  </div>
+                </div>
+                <div className="stat">
+                  <div className="stat-title">Val Loss</div>
+                  <div className="stat-value text-lg">
+                    {epochHistory.length > 0
+                      ? epochHistory[epochHistory.length - 1].valLoss.toFixed(4)
+                      : '-'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <progress
+                className="progress progress-primary w-full"
+                value={currentEpoch}
+                max={epochs}
+              ></progress>
+
+              {/* Training History */}
+              <div className="bg-base-300 rounded-lg p-4 max-h-48 overflow-y-auto">
+                <div className="text-sm text-base-content/60 mb-2">Training History</div>
+                <div className="space-y-1">
+                  {epochHistory.map((e) => (
+                    <div key={e.epoch} className="text-xs flex gap-4 font-mono">
+                      <span className="text-base-content/60">Epoch {e.epoch}</span>
+                      <span>
+                        Train: <span className="text-success">{e.trainLoss.toFixed(4)}</span>
+                      </span>
+                      <span>
+                        Val: <span className="text-warning">{e.valLoss.toFixed(4)}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button className="btn btn-error" onClick={handleStopTraining}>
+                Stop Training
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Directory Selection */}
+              <div className="grid grid-cols-1 gap-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Training Data Directory</span>
+                  </label>
+                  <div className="join w-full">
+                    <input
+                      type="text"
+                      className="input input-bordered join-item flex-1"
+                      value={dataDir}
+                      onChange={(e) => setDataDir(e.target.value)}
+                      placeholder="Path to cleaned training data"
+                    />
+                    <button
+                      className="btn btn-secondary join-item"
+                      onClick={() =>
+                        handleSelectDirectory('Select Training Data Directory', setDataDir)
+                      }
+                    >
+                      Browse
+                    </button>
+                  </div>
+                  <label className="label">
+                    <span className="label-text-alt">Directory containing train_data.json</span>
+                  </label>
+                </div>
+
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Model Output Directory</span>
+                  </label>
+                  <div className="join w-full">
+                    <input
+                      type="text"
+                      className="input input-bordered join-item flex-1"
+                      value={modelDir}
+                      onChange={(e) => setModelDir(e.target.value)}
+                      placeholder="Path to save trained models"
+                    />
+                    <button
+                      className="btn btn-secondary join-item"
+                      onClick={() =>
+                        handleSelectDirectory('Select Model Output Directory', setModelDir)
+                      }
+                    >
+                      Browse
+                    </button>
+                  </div>
+                  <label className="label">
+                    <span className="label-text-alt">Base directory for model storage</span>
+                  </label>
+                </div>
+
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Model Name</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="input input-bordered w-full"
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
+                    placeholder="e.g., model_v1, experiment_lr001"
+                  />
+                  <label className="label">
+                    <span className="label-text-alt">
+                      Saved to: <code className="text-primary">{modelOutputPath}/</code>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="divider">Model Configuration</div>
+
+              {/* Configuration Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Model Architecture</span>
+                  </label>
+                  <select
+                    className="select select-bordered w-full"
+                    value={modelType}
+                    onChange={(e) =>
+                      setModelType(e.target.value as 'custom_cnn' | 'mobilenet' | 'efficientnet')
+                    }
+                  >
+                    <option value="custom_cnn">Custom CNN (Default)</option>
+                    <option value="mobilenet">MobileNet</option>
+                    <option value="efficientnet">EfficientNet</option>
+                  </select>
+                </div>
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Epochs</span>
+                  </label>
+                  <input
+                    type="number"
+                    className="input input-bordered w-full"
+                    value={epochs}
+                    onChange={(e) => setEpochs(parseInt(e.target.value))}
+                    min={1}
+                    max={100}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Batch Size</span>
+                  </label>
+                  <select
+                    className="select select-bordered w-full"
+                    value={batchSize}
+                    onChange={(e) => setBatchSize(parseInt(e.target.value))}
+                  >
+                    <option value={8}>8</option>
+                    <option value={16}>16</option>
+                    <option value={32}>32</option>
+                    <option value={64}>64</option>
+                  </select>
+                </div>
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Learning Rate</span>
+                  </label>
+                  <select
+                    className="select select-bordered w-full"
+                    value={learningRate}
+                    onChange={(e) => setLearningRate(parseFloat(e.target.value))}
+                  >
+                    <option value={0.01}>0.01</option>
+                    <option value={0.001}>0.001</option>
+                    <option value={0.0001}>0.0001</option>
+                  </select>
+                </div>
+              </div>
+
+              <button className="btn btn-primary btn-lg w-full" onClick={handleStartTraining}>
+                Start Training
+              </button>
+
+              {error && (
+                <div className="alert alert-error">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {completedModelPath && (
+                <div className="alert alert-success">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Training complete! Model saved to: <code>{completedModelPath}</code></span>
+                </div>
+              )}
+
+              {epochHistory.length > 0 && !completedModelPath && (
+                <div className="text-sm text-base-content/60">
+                  Last training - Best validation loss:{' '}
+                  <span className="text-success font-medium">{bestValLoss.toFixed(4)}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Model Output Card */}
+      <div className="card bg-base-200">
+        <div className="card-body">
+          <h3 className="card-title text-lg mb-4">Model Output</h3>
+          <div className="text-sm text-base-content/60">
+            <p className="mb-2">Trained model will be saved to:</p>
+            <code className="text-primary">{modelOutputPath}/</code>
+            <ul className="list-disc list-inside mt-2 space-y-1">
+              <li>model.json - Architecture</li>
+              <li>model.weights.bin - Weights</li>
+            </ul>
+            <div className="mt-4 p-3 bg-base-300 rounded-lg">
+              <p className="text-xs">
+                <strong>Tip:</strong> Use different model names to save multiple training runs with
+                different hyperparameters. For example:
+              </p>
+              <ul className="list-disc list-inside mt-1 text-xs text-base-content/50">
+                <li>model_cnn_e10_lr001</li>
+                <li>model_mobilenet_e20</li>
+                <li>experiment_batch64</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default TrainPage;

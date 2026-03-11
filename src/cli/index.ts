@@ -1,5 +1,5 @@
 export function main(): void {
-  console.log('Nuclear Throne Bot - Redux');
+  console.log('NTB-Redux');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

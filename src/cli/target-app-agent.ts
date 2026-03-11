@@ -4,13 +4,14 @@ import type { InferenceConfig, GameAction } from './realtime-inference.js';
 import { RealTimeInference } from './realtime-inference.js';
 import type { ControllerConfig } from './game-controller.js';
 import { SafeGameController } from './game-controller.js';
-import { ScreenshotCapture } from './screenshot-capture.js';
 import { promises as fs } from 'fs';
 import { spawn } from 'child_process';
+import { join } from 'path';
+import { loadConfig, getResolvedPaths } from '../shared/config.js';
 
 interface AIConfig {
   modelPath: string;
-  gameWindowTitle: string;
+  targetWindowTitle: string;
   targetFPS: number;
   enableController: boolean;
   safetyMode: boolean;
@@ -27,12 +28,12 @@ interface AIConfig {
   };
 }
 
-class NuclearThroneAI {
+class TargetAppAgent {
   private inference: RealTimeInference;
   private controller: SafeGameController;
   private config: AIConfig;
   private isRunning = false;
-  private gameWindowId: string | null = null;
+  private targetWindowId: string | null = null;
   private sessionStartTime = Date.now();
   private actionCount = 0;
 
@@ -42,7 +43,7 @@ class NuclearThroneAI {
     // Initialize inference engine
     const inferenceConfig: InferenceConfig = {
       modelPath: config.modelPath,
-      gameWindowTitle: config.gameWindowTitle,
+      targetWindowTitle: config.targetWindowTitle,
       inferenceIntervalMs: 1000 / config.targetFPS,
       smoothingFactor: config.performance.smoothingFactor,
       confidenceThreshold: config.performance.confidenceThreshold,
@@ -64,7 +65,7 @@ class NuclearThroneAI {
   }
 
   public async initialize(): Promise<void> {
-    console.log('🤖 Initializing Nuclear Throne AI...');
+    console.log('🤖 Initializing Target App Agent...');
     console.log(`📁 Model: ${this.config.modelPath}`);
     console.log(`🎯 Target FPS: ${this.config.targetFPS}`);
     console.log(`🎮 Controller: ${this.config.enableController ? 'ENABLED' : 'DISABLED'}`);
@@ -77,10 +78,10 @@ class NuclearThroneAI {
     await this.inference.initialize();
     await this.controller.initialize();
 
-    // Find game window
-    await this.findGameWindow();
+    // Find target window
+    await this.findTargetWindow();
 
-    console.log('✅ Nuclear Throne AI initialized successfully!');
+    console.log('✅ Target App Agent initialized successfully!');
     console.log('');
     console.log('🎮 Controls:');
     console.log('  - Ctrl+C: Stop AI');
@@ -116,22 +117,15 @@ class NuclearThroneAI {
     }
   }
 
-  private async findGameWindow(): Promise<void> {
-    const screenshotCapture = new ScreenshotCapture();
-    const windows = await screenshotCapture.getWindows();
+  private async findTargetWindow(): Promise<void> {
+    // Get the window ID from the inference engine (which already found it)
+    this.targetWindowId = this.inference.getTargetWindowId();
 
-    const gameWindow = windows.find((w) =>
-      w.title.toLowerCase().includes(this.config.gameWindowTitle.toLowerCase()),
-    );
-
-    if (!gameWindow) {
+    if (!this.targetWindowId) {
       throw new Error(
-        `Game window not found: ${this.config.gameWindowTitle}\nMake sure Nuclear Throne is running!`,
+        `Target window not found: ${this.config.targetWindowTitle}\nMake sure the target application is running!`,
       );
     }
-
-    this.gameWindowId = gameWindow.id;
-    console.log(`✅ Found game window: ${gameWindow.title}`);
   }
 
   public async start(): Promise<void> {
@@ -140,12 +134,12 @@ class NuclearThroneAI {
       return;
     }
 
-    if (!this.gameWindowId) {
-      throw new Error('Game window not found');
+    if (!this.targetWindowId) {
+      throw new Error('Target window not found');
     }
 
-    console.log('🚀 Starting Nuclear Throne AI...');
-    console.log('🎯 The AI will now play the game!');
+    console.log('🚀 Starting Target App Agent...');
+    console.log('🎯 The AI will now control the application!');
 
     this.isRunning = true;
     this.sessionStartTime = Date.now();
@@ -157,16 +151,21 @@ class NuclearThroneAI {
 
       try {
         // Get action from inference engine
-        const action = this.getNextAction();
+        const action = await this.getNextAction();
+
+        if (!action) {
+          // Skip this frame if prediction failed
+          continue;
+        }
 
         // Execute action if controller is enabled
-        if (this.config.enableController && action) {
-          await this.controller.executeAction(action, this.gameWindowId);
+        if (this.config.enableController && this.targetWindowId) {
+          await this.controller.executeAction(action, this.targetWindowId);
           this.actionCount++;
         }
 
         // Log debug info
-        if (this.config.debug.enabled && action) {
+        if (this.config.debug.enabled) {
           this.logAIState(action, Date.now() - loopStartTime);
         }
 
@@ -192,35 +191,24 @@ class NuclearThroneAI {
       }
     }
 
-    console.log('🛑 Nuclear Throne AI stopped');
+    console.log('🛑 Target App Agent stopped');
   }
 
-  private getNextAction(): GameAction | null {
-    // This is a simplified version - in the full implementation,
-    // we'd integrate more closely with the inference engine
-
-    // For now, return a mock action to test the system
-    // In the real implementation, this would be replaced with:
-    // return await this.inference.predictNextAction();
-
-    return {
-      movement: {
-        x: Math.random() * 0.4 - 0.2, // Small random movement
-        y: Math.random() * 0.4 - 0.2,
-      },
-      aim: {
-        x: 160 + Math.random() * 40 - 20, // Center-ish aiming
-        y: 120 + Math.random() * 40 - 20,
-      },
-      shooting: Math.random() > 0.7, // Occasional shooting
-      confidence: 0.8,
-    };
+  private async getNextAction(): Promise<GameAction | null> {
+    try {
+      // Get real prediction from inference engine
+      const action = await this.inference.predictOnce();
+      return action;
+    } catch (error) {
+      console.error('❌ Prediction failed:', error instanceof Error ? error.message : String(error));
+      return null;
+    }
   }
 
   public async stop(): Promise<void> {
     if (!this.isRunning) return;
 
-    console.log('🛑 Stopping Nuclear Throne AI...');
+    console.log('🛑 Stopping Target App Agent...');
     this.isRunning = false;
 
     // Emergency stop controller
@@ -272,7 +260,7 @@ class NuclearThroneAI {
       actionHistory: this.inference.getActionHistory().slice(-100), // Last 100 actions
     };
 
-    const filename = `nuclear-throne-ai_session_${timestamp}.json`;
+    const filename = `agent_session_${timestamp}.json`;
     await fs.writeFile(filename, JSON.stringify(sessionData, null, 2));
     console.log(`💾 Session saved: ${filename}`);
   }
@@ -280,39 +268,28 @@ class NuclearThroneAI {
 
 // CLI interface
 async function main(): Promise<void> {
+  // Load app configuration
+  const appConfig = loadConfig();
+  const resolvedPaths = getResolvedPaths(appConfig);
+
   const args = process.argv.slice(2);
 
-  if (args.length < 1) {
-    console.log('Nuclear Throne AI - Autonomous Game Playing');
-    console.log('');
-    console.log('Usage: ts-node nuclear-throne-ai.ts <model-path> [options]');
-    console.log('');
-    console.log('Options:');
-    console.log('  --window <title>        Game window title (default: nuclearthrone)');
-    console.log('  --fps <number>          Target FPS (default: 20)');
-    console.log('  --no-controller         Disable controller (prediction only)');
-    console.log('  --no-safety             Disable safety mode');
-    console.log('  --smoothing <number>    Action smoothing 0-1 (default: 0.3)');
-    console.log('  --confidence <number>   Confidence threshold 0-1 (default: 0.4)');
-    console.log('  --dead-zone <number>    Movement dead zone 0-1 (default: 0.1)');
-    console.log('  --mouse-speed <number>  Mouse speed multiplier (default: 0.8)');
-    console.log('  --debug                 Enable debug mode');
-    console.log('  --save-session          Save session data');
-    console.log('');
-    console.log('Examples:');
-    console.log('  ts-node nuclear-throne-ai.ts ./models/model --fps 30 --debug');
-    console.log('  ts-node nuclear-throne-ai.ts ./models/model --no-controller --debug');
-    process.exit(1);
+  // Use config paths as defaults
+  let modelPath = join(resolvedPaths.models, 'model');
+
+  // If positional arg provided, use it
+  if (args.length >= 1 && !args[0]?.startsWith('--')) {
+    modelPath = args[0] ?? modelPath;
   }
 
   const config: AIConfig = {
-    modelPath: args[0] ?? '',
-    gameWindowTitle: 'nuclearthrone',
-    targetFPS: 20,
+    modelPath,
+    targetWindowTitle: appConfig.collection.targetWindowName,
+    targetFPS: appConfig.inference.defaultFps,
     enableController: true,
     safetyMode: true,
     performance: {
-      smoothingFactor: 0.3,
+      smoothingFactor: appConfig.inference.defaultSmoothingFactor,
       confidenceThreshold: 0.4,
       deadZone: 0.1,
       mouseSpeed: 0.8,
@@ -325,10 +302,10 @@ async function main(): Promise<void> {
   };
 
   // Parse options
-  for (let i = 1; i < args.length; i++) {
+  for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case '--window':
-        config.gameWindowTitle = args[++i] ?? 'nuclearthrone';
+        config.targetWindowTitle = args[++i] ?? '';
         break;
       case '--fps':
         config.targetFPS = parseInt(args[++i] ?? '20');
@@ -358,13 +335,37 @@ async function main(): Promise<void> {
       case '--save-session':
         config.debug.saveSession = true;
         break;
+      case '--help':
+        console.log('Target App Agent - Autonomous Application Control');
+        console.log('');
+        console.log('Usage: ts-node target-app-agent.ts [model-path] [options]');
+        console.log('');
+        console.log('Model path defaults to models/model from config.');
+        console.log('');
+        console.log('Options:');
+        console.log('  --window <title>        Target window title (from config by default)');
+        console.log('  --fps <number>          Target FPS (default: 20)');
+        console.log('  --no-controller         Disable controller (prediction only)');
+        console.log('  --no-safety             Disable safety mode');
+        console.log('  --smoothing <number>    Action smoothing 0-1 (default: 0.3)');
+        console.log('  --confidence <number>   Confidence threshold 0-1 (default: 0.4)');
+        console.log('  --dead-zone <number>    Movement dead zone 0-1 (default: 0.1)');
+        console.log('  --mouse-speed <number>  Mouse speed multiplier (default: 0.8)');
+        console.log('  --debug                 Enable debug mode');
+        console.log('  --save-session          Save session data');
+        console.log('  --help                  Show this help message');
+        console.log('');
+        console.log('Examples:');
+        console.log('  ts-node target-app-agent.ts --fps 30 --debug');
+        console.log('  ts-node target-app-agent.ts --no-controller --debug');
+        process.exit(0);
     }
   }
 
-  console.log('🎮 Nuclear Throne AI v1.0');
+  console.log('🎮 Target App Agent v1.0');
   console.log('========================================');
 
-  const ai = new NuclearThroneAI(config);
+  const ai = new TargetAppAgent(config);
 
   // Handle graceful shutdown
   process.on('SIGINT', () => {
@@ -388,7 +389,7 @@ async function main(): Promise<void> {
 }
 
 // Export for use as module
-export { NuclearThroneAI, AIConfig };
+export { TargetAppAgent, AIConfig };
 
 // Run CLI if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {

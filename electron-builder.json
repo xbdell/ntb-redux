@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.app-training-bot.app",
+  "productName": "NTB-Redux",
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "files": ["dist/**/*", "package.json"],
+  "extraMetadata": {
+    "main": "dist/main/main/index.js"
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "category": "Utility",
+    "maintainer": "app-training-bot",
+    "icon": "build/icon.png"
+  },
+  "deb": {
+    "depends": ["ffmpeg", "xdotool", "wmctrl", "scrot"]
+  },
+  "appImage": {
+    "artifactName": "${productName}-${version}.${ext}"
+  }
+}
