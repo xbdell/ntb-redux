@@ -6,8 +6,6 @@ LM powered bot to control applications via imitation learning. Currently in a ve
 
 This is a second attempt at a project I started around 7 years ago. I had the basic idea for this project and even got around to creating the data collection portion [os-input-capture](https://github.com/github-bdem/os-input-capture) before life derailed my progess. Fast forward to now, and with all the advances in the LM landscape and tooling, I figured it would be a good time to try out the project again. This time I decided to also try out my new Anthropic subscription and see just how useful claude-code is when writing a project from the ground up.
 
-### NOTE: Seems Nvidia wanted to something similar: https://huggingface.co/datasets/nvidia/NitroGen
-
 ## OS Dependencies
 
 Currently only tested on Ubuntu 24 LTS. The following command will make sure all os level packages are installed.
